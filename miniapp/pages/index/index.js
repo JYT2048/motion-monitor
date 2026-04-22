@@ -186,6 +186,35 @@ Page({
     }
   },
 
+  // =================== Cloud Connection Test ===================
+  testCloudConnection() {
+    if (!this._state.useCloudContainer) {
+      this.setData({ debugInfo: '⚠️ 云托管不可用，apiBase=' + (app.globalData.apiBase || '空') })
+      return
+    }
+
+    const envId = app.globalData.cloudEnvId
+    const serviceName = 'motion-monitor1'
+    this.setData({ debugInfo: '🔍 测试云托管连通性... (env=' + envId + ', svc=' + serviceName + ')' })
+
+    wx.cloud.callContainer({
+      config: { env: envId },
+      path: '/health',
+      method: 'GET',
+      header: {
+        'X-WX-SERVICE': serviceName,
+      },
+      success: (res) => {
+        console.log('[Test] Health check success:', res.statusCode, res.data)
+        this.setData({ debugInfo: '✅ 云托管连通! HTTP ' + res.statusCode + ' ' + JSON.stringify(res.data) })
+      },
+      fail: (err) => {
+        console.error('[Test] Health check failed:', err.errMsg || JSON.stringify(err))
+        this.setData({ debugInfo: '❌ 云托管不通: ' + (err.errMsg || JSON.stringify(err)).substring(0, 120) })
+      }
+    })
+  },
+
   // =================== Mode Switch ===================
   switchMode(e) {
     const mode = e.currentTarget.dataset.mode
@@ -266,6 +295,9 @@ Page({
           })
         }
       }, 3000)
+
+      // 先测试云托管连通性
+      that.testCloudConnection()
 
       if (app.globalData.mode === 'http') {
         const mode = that.data.activeMode === 'motion' ? '运动监测' : '体态评估'
