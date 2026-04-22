@@ -329,10 +329,22 @@ def assess_posture(lm: list) -> dict:
 def decode_frame(data: dict) -> Optional[np.ndarray]:
     """解码小程序发来的帧数据"""
     try:
+        # 优先处理 JPEG 格式（前端压缩后发送）
+        fmt = data.get("format", "rgba")
+
+        if fmt == "jpeg":
+            b64_data = data.get("image", "") or data.get("data", "")
+            if not b64_data:
+                return None
+            raw_bytes = base64.b64decode(b64_data)
+            img_array = np.frombuffer(raw_bytes, dtype=np.uint8)
+            img_array = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            return img_array
+
+        # 原始 RGBA 格式
         b64_data = data.get("data", "")
         width = data.get("width", 0)
         height = data.get("height", 0)
-        fmt = data.get("format", "rgba")
 
         if not b64_data or not width or not height:
             return None

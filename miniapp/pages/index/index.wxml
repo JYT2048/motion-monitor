@@ -21,7 +21,7 @@
       flash="off"
       mode="normal"
       resolution="medium"
-      frame-size="medium"
+      frame-size="small"
       class="camera-view"
       bindinitdone="onCameraInitDone"
       bindstop="onCameraStop"
@@ -212,8 +212,9 @@
     </view>
   </block>
 
-  <!-- Debug Info -->
-  <view class="debug-bar" wx:if="{{debugInfo}}">
+  <!-- Debug Info - 诊断面板 -->
+  <view class="debug-panel" wx:if="{{debugInfo}}">
+    <view class="debug-header">🔧 诊断信息</view>
     <text class="debug-text">{{debugInfo}}</text>
   </view>
 

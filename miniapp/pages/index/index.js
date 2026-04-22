@@ -151,11 +151,13 @@ Page({
     // 检测是否使用云托管
     if (wx.cloud) {
       try {
-        wx.cloud.init()
+        wx.cloud.init({
+          traceUser: true,
+        })
         this._state.useCloudContainer = true
         console.log('[Init] Cloud container mode enabled')
       } catch (e) {
-        console.log('[Init] Cloud not available, using direct HTTP')
+        console.log('[Init] Cloud not available:', e.message)
       }
     }
 
@@ -290,7 +292,7 @@ Page({
       .fields({ node: true, size: true })
       .exec((res) => {
         if (!res[0]) {
-          console.warn('[Canvas] Canvas node not found')
+          console.warn('[Canvas] poseCanvas node not found')
           return
         }
         const canvas = res[0].node
@@ -366,6 +368,7 @@ Page({
       const arrayBuffer = frame.data
       const base64 = wx.arrayBufferToBase64(arrayBuffer)
 
+      // frame-size="small" 产生约 160x120 RGBA，base64 ≈ 100KB
       const payload = {
         data: base64,
         width: frame.width,
@@ -375,7 +378,11 @@ Page({
 
       this._state.requestCount++
       const reqId = this._state.requestCount
-      console.log('[Request] #' + reqId, apiPath, 'frame=' + frame.width + 'x' + frame.height, 'base64=' + Math.round(base64.length / 1024) + 'KB')
+      const sizeKB = Math.round(base64.length / 1024)
+      console.log('[Request] #' + reqId, apiPath, 'frame=' + frame.width + 'x' + frame.height, 'base64=' + sizeKB + 'KB')
+
+      // 更新 debug：发送中
+      this.setData({ debugInfo: '发送第' + reqId + '次 (' + sizeKB + 'KB) ' + (this._state.useCloudContainer ? '云托管' : '直连') + '...' })
 
       let result
 
@@ -386,21 +393,29 @@ Page({
             path: apiPath,
             method: 'POST',
             data: payload,
-            header: { 'X-WX-SERVICE': 'motion-monitor1' },
-            success(res) { 
-              console.log('[Request] #' + reqId, 'response:', JSON.stringify(res.data).substring(0, 300))
-              resolve(res.data) 
+            header: {
+              'X-WX-SERVICE': 'motion-monitor1',
+              'content-type': 'application/json'
             },
-            fail(err) { 
-              console.error('[Request] #' + reqId, 'callContainer failed:', err)
-              reject(err) 
+            success(res) {
+              console.log('[Request] #' + reqId, 'success, status=' + res.statusCode, 'data=', JSON.stringify(res.data).substring(0, 300))
+              resolve(res.data)
+            },
+            fail(err) {
+              console.error('[Request] #' + reqId, 'callContainer failed:', err.errMsg || JSON.stringify(err))
+              reject(err)
             }
           })
         })
       } else {
+        const apiBase = app.globalData.apiBase
+        if (!apiBase) {
+          this.setData({ debugInfo: '⚠️ apiBase 为空且云托管不可用。请在云托管控制台关联服务。' })
+          return
+        }
         const res = await new Promise((resolve, reject) => {
           wx.request({
-            url: app.globalData.apiBase + apiPath,
+            url: apiBase + apiPath,
             method: 'POST',
             data: payload,
             header: { 'content-type': 'application/json' },
@@ -416,22 +431,24 @@ Page({
         if (result.landmarks) {
           this.onPoseResult(result)
         } else {
-          // 没检测到人体，清空 canvas 上的骨骼
           this.clearSkeleton()
+          this.setData({ debugInfo: '第' + reqId + '次: 未检测到人体' })
         }
         if (result.posture && !result.posture.error) {
           this.onPostureResult(result.posture)
         }
         if (result.error) {
           this._state.errorCount++
-          this.setData({ debugInfo: '检测提示: ' + result.error })
+          this.setData({ debugInfo: '第' + reqId + '次: ' + result.error })
         }
+      } else {
+        this.setData({ debugInfo: '第' + reqId + '次: 返回为空' })
       }
     } catch (e) {
       this._state.errorCount++
       const errMsg = e.errMsg || e.message || String(e)
       console.error('[Request] Error:', errMsg)
-      this.setData({ debugInfo: '请求失败: ' + errMsg.substring(0, 50) })
+      this.setData({ debugInfo: '❌ 请求失败: ' + errMsg.substring(0, 80) })
     } finally {
       this._state.processing = false
     }
