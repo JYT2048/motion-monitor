@@ -83,7 +83,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 | 配置项 | 填写 | 说明 |
 |--------|------|------|
-| 服务名称 | `motion-monitor` | **必须英文小写**，和 `X-WX-SERVICE` 一致 |
+| 服务名称 | `motion-monitor1` | **必须英文小写**，和 `X-WX-SERVICE` 一致 |
 | 服务描述 | 运动姿态监测推理服务 | 随意 |
 | 监听端口 | `8000` | FastAPI 端口 |
 
@@ -162,12 +162,12 @@ wx.cloud.callContainer({
   config: { env: app.globalData.cloudEnvId },  // 使用显式环境 ID
   path: '/api/pose',                                // API 路径
   method: 'POST',
-  header: { 'X-WX-SERVICE': 'motion-monitor' },    // ← 必须和云托管服务名一致
+  header: { 'X-WX-SERVICE': 'motion-monitor1' },    // ← 必须和云托管服务名一致
   ...
 })
 ```
 
-> ⚠️ **`X-WX-SERVICE`** 的值必须和第 2 步创建的服务名完全一致，都是 `motion-monitor`！
+> ⚠️ **`X-WX-SERVICE`** 的值必须和第 2 步创建的服务名完全一致，都是 `motion-monitor1`！
 
 ### 3.4 用开发者工具打开项目
 

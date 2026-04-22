@@ -442,7 +442,7 @@ Page({
             method: 'POST',
             data: payload,
             header: {
-              'X-WX-SERVICE': 'motion-monitor',
+              'X-WX-SERVICE': 'motion-monitor1',
               'content-type': 'application/json'
             },
             success(res) {
