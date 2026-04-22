@@ -1,7 +1,6 @@
 {
   "pages": [
-    "pages/index/index",
-    "pages/privacy/privacy"
+    "pages/index/index"
   ],
   "window": {
     "navigationBarTitleText": "运动姿态监测",
@@ -14,7 +13,6 @@
       "desc": "需要使用摄像头进行运动姿态监测"
     }
   },
-  "__usePrivacyCheck__": true,
   "style": "v2",
   "lazyCodeLoading": "requiredComponents"
 }

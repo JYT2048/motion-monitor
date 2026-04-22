@@ -1,6 +1,81 @@
 // pages/index/index.js
 const app = getApp()
 
+// MediaPipe Pose 骨骼连接定义
+const SKELETON_CONNECTIONS = [
+  // 躯干
+  [11, 12], // 左肩 - 右肩
+  [11, 23], // 左肩 - 左髋
+  [12, 24], // 右肩 - 右髋
+  [23, 24], // 左髋 - 右髋
+  // 左臂
+  [11, 13], // 左肩 - 左肘
+  [13, 15], // 左肘 - 左腕
+  [15, 17], // 左腕 - 左拇指
+  [15, 19], // 左腕 - 左食指
+  [15, 21], // 左腕 - 左小指
+  // 右臂
+  [12, 14], // 右肩 - 右肘
+  [14, 16], // 右肘 - 右腕
+  [16, 18], // 右腕 - 右拇指
+  [16, 20], // 右腕 - 右食指
+  [16, 22], // 右腕 - 右小指
+  // 左腿
+  [23, 25], // 左髋 - 左膝
+  [25, 27], // 左膝 - 左踝
+  [27, 29], // 左踝 - 左脚跟
+  [27, 31], // 左踝 - 左脚尖
+  // 右腿
+  [24, 26], // 右髋 - 右膝
+  [26, 28], // 右膝 - 右踝
+  [28, 30], // 右踝 - 右脚跟
+  [28, 32], // 右踝 - 右脚尖
+]
+
+// 关节名称映射（中文）
+const LANDMARK_NAMES = [
+  '鼻', '左眼内', '左眼', '左眼外', '右眼内', '右眼', '右眼外',
+  '左耳', '右耳', '嘴左', '嘴右',
+  '左肩', '右肩', '左肘', '右肘', '左腕', '右腕',
+  '左拇指', '右拇指', '左食指', '右食指', '左小指', '右小指',
+  '左髋', '右髋', '左膝', '右膝', '左踝', '右踝',
+  '左脚跟', '右脚跟', '左脚尖', '右脚尖'
+]
+
+// 需要标注名称的关键关节
+const KEY_JOINTS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+
+// 颜色方案
+const COLORS = {
+  // 躯干线
+  torso: '#06d6a0',
+  // 左侧肢体线
+  leftLimb: '#ffd166',
+  // 右侧肢体线
+  rightLimb: '#118ab2',
+  // 关节点 - 主要
+  majorJoint: '#06d6a0',
+  // 关节点 - 次要
+  minorJoint: '#118ab2',
+  // 角度标注
+  angleText: '#ef476f',
+  // 关节名称
+  labelText: '#e2e8f0',
+  // 光晕
+  glow: 'rgba(6,214,160,0.3)',
+}
+
+// 判断连接属于哪一侧
+function getConnectionSide(i, j) {
+  const left = [11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
+  const right = [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
+  const iLeft = left.includes(i), jLeft = left.includes(j)
+  const iRight = right.includes(i), jRight = right.includes(j)
+  if (iLeft && jLeft) return 'left'
+  if (iRight && jRight) return 'right'
+  return 'torso'
+}
+
 Page({
   data: {
     cameraReady: false,
@@ -35,6 +110,10 @@ Page({
     postureStatus: '',
     postureEmoji: '',
     postureDetails: [],
+    // Debug
+    debugInfo: '',
+    // Skeleton visibility
+    showSkeleton: true,
   },
 
   // Internal state
@@ -56,8 +135,16 @@ Page({
     processing: false,
     pollTimer: null,
     postureTimer: null,
-    frameQueue: [],
+    latestFrame: null,
     useCloudContainer: false,
+    frameCount: 0,
+    requestCount: 0,
+    errorCount: 0,
+    // 上一帧的 landmarks，用于平滑
+    prevLandmarks: null,
+    // camera 组件实际尺寸
+    cameraWidth: 0,
+    cameraHeight: 0,
   },
 
   onLoad() {
@@ -66,9 +153,9 @@ Page({
       try {
         wx.cloud.init()
         this._state.useCloudContainer = true
-        console.log('Cloud container mode')
+        console.log('[Init] Cloud container mode enabled')
       } catch (e) {
-        console.log('Cloud not available, using direct HTTP')
+        console.log('[Init] Cloud not available, using direct HTTP')
       }
     }
 
@@ -122,39 +209,21 @@ Page({
   startCamera() {
     const that = this
 
-    // 先检查是否已有权限
-    wx.getSetting({
-      success(res) {
-        if (res.authSetting['scope.camera'] === false) {
-          // 用户曾拒绝过，引导去设置
-          wx.showModal({
-            title: '需要摄像头权限',
-            content: '请在设置中允许摄像头访问',
-            confirmText: '去设置',
-            success(modalRes) {
-              if (modalRes.confirm) wx.openSetting()
-            }
-          })
-          return
-        }
-
-        // 未授权过或已授权，直接启动摄像头
+    wx.authorize({
+      scope: 'scope.camera',
+      success() {
+        console.log('[Camera] authorize success')
         that._openCamera()
       },
       fail() {
-        // getSetting 失败，尝试直接授权
-        wx.authorize({
-          scope: 'scope.camera',
-          success() { that._openCamera() },
-          fail() {
-            wx.showModal({
-              title: '需要摄像头权限',
-              content: '请在设置中允许摄像头访问',
-              confirmText: '去设置',
-              success(modalRes) {
-                if (modalRes.confirm) wx.openSetting()
-              }
-            })
+        console.log('[Camera] authorize failed, opening settings...')
+        wx.openSetting({
+          success(settingRes) {
+            if (settingRes.authSetting['scope.camera']) {
+              that._openCamera()
+            } else {
+              wx.showToast({ title: '需要摄像头权限才能使用', icon: 'none' })
+            }
           }
         })
       }
@@ -163,13 +232,18 @@ Page({
 
   _openCamera() {
     const that = this
-    that.setData({ cameraReady: true })
+    console.log('[Camera] Opening camera...')
+    that.setData({ 
+      cameraReady: true,
+      debugInfo: '正在初始化摄像头...'
+    })
+
+    // 等 camera 组件渲染完成后初始化帧监听
     setTimeout(() => {
       that.setupFrameListener()
       that.setupCanvas()
       that.startSession()
 
-      // HTTP 模式启动轮询
       if (app.globalData.mode === 'http') {
         if (that.data.activeMode === 'motion') {
           that.startPolling()
@@ -177,17 +251,29 @@ Page({
           that.startPosturePolling()
         }
       }
-    }, 800)
+
+      that.setData({ debugInfo: '摄像头已就绪，等待帧数据...' })
+    }, 1500)
   },
 
   onCameraError(e) {
-    console.error('Camera error:', e.detail)
-    wx.showToast({ title: '摄像头启动失败', icon: 'none' })
-    this.setData({ cameraReady: false })
+    console.error('[Camera] Error:', e.detail)
+    this.setData({ 
+      debugInfo: '摄像头错误: ' + (e.detail.errMsg || JSON.stringify(e.detail)),
+      cameraReady: false 
+    })
+    wx.showToast({ title: '摄像头启动失败', icon: 'none', duration: 3000 })
   },
 
   onCameraStop() {
-    console.log('Camera stopped')
+    console.log('[Camera] Stopped')
+    this.setData({ debugInfo: '摄像头已停止' })
+  },
+
+  onCameraInitDone(e) {
+    console.log('[Camera] Init done:', e.detail)
+    this.setData({ debugInfo: '摄像头初始化完成，开始采集...' })
+    wx.showToast({ title: '摄像头已就绪', icon: 'success', duration: 1000 })
   },
 
   stopCamera() {
@@ -203,7 +289,10 @@ Page({
     query.select('#poseCanvas')
       .fields({ node: true, size: true })
       .exec((res) => {
-        if (!res[0]) return
+        if (!res[0]) {
+          console.warn('[Canvas] Canvas node not found')
+          return
+        }
         const canvas = res[0].node
         const ctx = canvas.getContext('2d')
         const dpr = wx.getWindowInfo().pixelRatio
@@ -212,104 +301,67 @@ Page({
         ctx.scale(dpr, dpr)
         this._state.canvas = canvas
         this._state.ctx = ctx
+        this._state.canvasWidth = res[0].width
+        this._state.canvasHeight = res[0].height
+        console.log('[Canvas] Setup done:', canvas.width, 'x', canvas.height, 'dpr=' + dpr)
       })
   },
 
   // =================== Frame Listener ===================
   setupFrameListener() {
-    const camera = wx.createCameraContext()
-    let frameCounter = 0
-    const targetInterval = Math.round(app.globalData.pollInterval / 33)
+    try {
+      const camera = wx.createCameraContext()
+      console.log('[Frame] Setting up frame listener...')
 
-    const listener = camera.onCameraFrame((frame) => {
-      frameCounter++
-      if (frameCounter % targetInterval === 0) {
-        this._state.frameQueue.push(frame)
-        if (this._state.frameQueue.length > 1) {
-          this._state.frameQueue.shift()
+      const listener = camera.onCameraFrame((frame) => {
+        this._state.frameCount++
+        // 只保留最新一帧，覆盖旧帧
+        this._state.latestFrame = frame
+
+        // 记录 camera 帧的实际尺寸
+        this._state.cameraWidth = frame.width
+        this._state.cameraHeight = frame.height
+
+        // 每 30 帧打印一次日志
+        if (this._state.frameCount % 30 === 0) {
+          console.log('[Frame] #' + this._state.frameCount, frame.width + 'x' + frame.height, 'size=' + Math.round(frame.data.byteLength / 1024) + 'KB')
         }
-      }
+      })
 
-      // WS 模式直接发送
-      if (app.globalData.mode === 'ws' && !this._state.processing) {
-        this._state.processing = true
-        this.sendFrameWS(frame)
-      }
-    })
-    listener.start()
-    this._state.listener = listener
+      listener.start()
+      this._state.listener = listener
+      console.log('[Frame] Listener started')
+    } catch (e) {
+      console.error('[Frame] Failed to setup listener:', e)
+      this.setData({ debugInfo: '帧监听失败: ' + e.message })
+    }
   },
 
   // =================== HTTP Polling (motion mode) ===================
   startPolling() {
-    const interval = app.globalData.pollInterval
+    console.log('[Poll] Motion polling started, interval=500ms')
     this._state.pollTimer = setInterval(() => {
-      if (this._state.frameQueue.length === 0) return
+      if (!this._state.latestFrame || this._state.processing) return
 
-      const frame = this._state.frameQueue.shift()
-      this.sendFrameHTTP(frame)
-    }, interval)
-  },
-
-  async sendFrameHTTP(frame) {
-    try {
-      const arrayBuffer = frame.data
-      const base64 = wx.arrayBufferToBase64(arrayBuffer)
-
-      const payload = {
-        data: base64,
-        width: frame.width,
-        height: frame.height,
-        format: 'rgba'
-      }
-
-      let result
-
-      if (this._state.useCloudContainer) {
-        result = await new Promise((resolve, reject) => {
-          wx.cloud.callContainer({
-            config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },
-            path: '/api/pose',
-            method: 'POST',
-            data: payload,
-            header: { 'X-WX-SERVICE': 'motion-monitor1' },
-            success(res) { resolve(res.data) },
-            fail(err) { reject(err) }
-          })
-        })
-      } else {
-        const res = await new Promise((resolve, reject) => {
-          wx.request({
-            url: app.globalData.apiBase + '/api/pose',
-            method: 'POST',
-            data: payload,
-            header: { 'content-type': 'application/json' },
-            success(res) { resolve(res.data) },
-            fail(err) { reject(err) }
-          })
-        })
-        result = res
-      }
-
-      if (result && result.landmarks) {
-        this.onPoseResult(result)
-      }
-    } catch (e) {
-      console.warn('HTTP pose request error:', e.message || e)
-    }
+      const frame = this._state.latestFrame
+      this._state.processing = true
+      this.sendFrameHTTP(frame, '/api/pose')
+    }, 500)
   },
 
   // =================== Posture Polling (posture mode) ===================
   startPosturePolling() {
-    // 体态评估不需要高频，1.5秒一次即可
+    console.log('[Poll] Posture polling started, interval=2000ms')
     this._state.postureTimer = setInterval(() => {
-      if (this._state.frameQueue.length === 0) return
-      const frame = this._state.frameQueue.shift()
-      this.sendFramePosture(frame)
-    }, 1500)
+      if (!this._state.latestFrame || this._state.processing) return
+
+      const frame = this._state.latestFrame
+      this._state.processing = true
+      this.sendFrameHTTP(frame, '/api/posture')
+    }, 2000)
   },
 
-  async sendFramePosture(frame) {
+  async sendFrameHTTP(frame, apiPath) {
     try {
       const arrayBuffer = frame.data
       const base64 = wx.arrayBufferToBase64(arrayBuffer)
@@ -321,24 +373,34 @@ Page({
         format: 'rgba'
       }
 
+      this._state.requestCount++
+      const reqId = this._state.requestCount
+      console.log('[Request] #' + reqId, apiPath, 'frame=' + frame.width + 'x' + frame.height, 'base64=' + Math.round(base64.length / 1024) + 'KB')
+
       let result
 
       if (this._state.useCloudContainer) {
         result = await new Promise((resolve, reject) => {
           wx.cloud.callContainer({
             config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },
-            path: '/api/posture',
+            path: apiPath,
             method: 'POST',
             data: payload,
             header: { 'X-WX-SERVICE': 'motion-monitor1' },
-            success(res) { resolve(res.data) },
-            fail(err) { reject(err) }
+            success(res) { 
+              console.log('[Request] #' + reqId, 'response:', JSON.stringify(res.data).substring(0, 300))
+              resolve(res.data) 
+            },
+            fail(err) { 
+              console.error('[Request] #' + reqId, 'callContainer failed:', err)
+              reject(err) 
+            }
           })
         })
       } else {
         const res = await new Promise((resolve, reject) => {
           wx.request({
-            url: app.globalData.apiBase + '/api/posture',
+            url: app.globalData.apiBase + apiPath,
             method: 'POST',
             data: payload,
             header: { 'content-type': 'application/json' },
@@ -349,14 +411,29 @@ Page({
         result = res
       }
 
-      if (result && result.landmarks) {
-        this.onPoseResult(result)
-      }
-      if (result && result.posture && !result.posture.error) {
-        this.onPostureResult(result.posture)
+      // 处理结果
+      if (result) {
+        if (result.landmarks) {
+          this.onPoseResult(result)
+        } else {
+          // 没检测到人体，清空 canvas 上的骨骼
+          this.clearSkeleton()
+        }
+        if (result.posture && !result.posture.error) {
+          this.onPostureResult(result.posture)
+        }
+        if (result.error) {
+          this._state.errorCount++
+          this.setData({ debugInfo: '检测提示: ' + result.error })
+        }
       }
     } catch (e) {
-      console.warn('Posture request error:', e.message || e)
+      this._state.errorCount++
+      const errMsg = e.errMsg || e.message || String(e)
+      console.error('[Request] Error:', errMsg)
+      this.setData({ debugInfo: '请求失败: ' + errMsg.substring(0, 50) })
+    } finally {
+      this._state.processing = false
     }
   },
 
@@ -379,6 +456,7 @@ Page({
       postureEmoji: posture.overall_emoji,
       postureDetails: details,
       posture: posture,
+      debugInfo: '体态评分: ' + posture.overall_score + ' ' + posture.overall_label,
     })
   },
 
@@ -410,36 +488,6 @@ Page({
     this._state.socketTask = socketTask
   },
 
-  sendFrameWS(frame) {
-    const socketTask = this._state.socketTask
-    if (!socketTask || socketTask.readyState !== 1) {
-      this._state.processing = false
-      return
-    }
-
-    const arrayBuffer = frame.data
-    const base64 = wx.arrayBufferToBase64(arrayBuffer)
-
-    const payload = {
-      type: 'frame',
-      data: base64,
-      width: frame.width,
-      height: frame.height,
-      format: 'rgba'
-    }
-
-    try {
-      socketTask.send({
-        data: JSON.stringify(payload),
-        fail() { console.warn('WS send failed') }
-      })
-    } catch (e) {
-      console.warn('Send error:', e)
-    }
-
-    this._state.processing = false
-  },
-
   // =================== Pose Result ===================
   onPoseResult(data) {
     let result
@@ -460,8 +508,18 @@ Page({
     const motion = this.detectMotion(lm, angles)
     const stability = this.computeStability(lm, angles)
 
-    // Draw skeleton
-    this.drawSkeleton(lm)
+    // 平滑处理 landmarks
+    const smoothedLm = this.smoothLandmarks(lm)
+    this._state.prevLandmarks = smoothedLm
+
+    // Draw skeleton on canvas
+    if (this.data.showSkeleton) {
+      this.drawSkeleton(smoothedLm)
+    }
+
+    // 可见关键点数量
+    const visibleCount = smoothedLm.filter(p => p.visibility >= 0.4).length
+    this.setData({ debugInfo: '检测到 ' + visibleCount + '/33 个关键点' })
 
     // FPS
     this._state.fpsCount++
@@ -492,60 +550,190 @@ Page({
     })
   },
 
-  // =================== Drawing ===================
-  drawSkeleton(lm) {
+  // =================== Landmark Smoothing ===================
+  smoothLandmarks(lm, alpha) {
+    alpha = alpha || 0.6  // 平滑系数，0=完全用旧值，1=完全用新值
+    if (!this._state.prevLandmarks) return lm
+
+    return lm.map((p, i) => {
+      const prev = this._state.prevLandmarks[i]
+      if (!prev) return p
+      return {
+        x: prev.x + alpha * (p.x - prev.x),
+        y: prev.y + alpha * (p.y - prev.y),
+        visibility: p.visibility
+      }
+    })
+  },
+
+  // =================== Drawing - Enhanced Skeleton ===================
+  clearSkeleton() {
     const ctx = this._state.ctx
     if (!ctx) return
+    const canvas = this._state.canvas
+    const dpr = wx.getWindowInfo().pixelRatio
+    const w = canvas.width / dpr
+    const h = canvas.height / dpr
+    ctx.clearRect(0, 0, w, h)
+  },
+
+  drawSkeleton(lm) {
+    const ctx = this._state.ctx
+    if (!ctx) {
+      console.warn('[Draw] No canvas context')
+      return
+    }
 
     const canvas = this._state.canvas
-    const w = canvas.width / wx.getWindowInfo().pixelRatio
-    const h = canvas.height / wx.getWindowInfo().pixelRatio
+    const dpr = wx.getWindowInfo().pixelRatio
+    const w = canvas.width / dpr
+    const h = canvas.height / dpr
 
+    // 清空画布
     ctx.clearRect(0, 0, w, h)
 
+    // 前置摄像头需要镜像翻转 X 坐标
     const mirrorLm = lm.map(p => ({
       x: 1 - p.x,
       y: p.y,
-      visibility: p.visibility
+      visibility: p.visibility || 0
     }))
 
-    const connections = [
-      [11,12], [11,13], [13,15], [12,14], [14,16],
-      [11,23], [12,24], [23,24],
-      [23,25], [25,27], [24,26], [26,28],
-      [15,17], [15,19], [16,18], [16,20],
-      [27,29], [27,31], [28,30], [28,32],
-    ]
-
-    ctx.lineWidth = 2
-    connections.forEach(([i, j]) => {
+    // --- 第 1 层：绘制连线光晕（外发光效果） ---
+    SKELETON_CONNECTIONS.forEach(([i, j]) => {
       const a = mirrorLm[i], b = mirrorLm[j]
-      if (a.visibility < 0.5 || b.visibility < 0.5) return
-      ctx.strokeStyle = 'rgba(6,214,160,0.8)'
+      if (a.visibility < 0.4 || b.visibility < 0.4) return
+
+      const side = getConnectionSide(i, j)
+      ctx.strokeStyle = side === 'left' ? 'rgba(255,209,102,0.15)' : side === 'right' ? 'rgba(17,138,178,0.15)' : 'rgba(6,214,160,0.15)'
+      ctx.lineWidth = 8
+      ctx.lineCap = 'round'
       ctx.beginPath()
       ctx.moveTo(a.x * w, a.y * h)
       ctx.lineTo(b.x * w, b.y * h)
       ctx.stroke()
     })
 
-    mirrorLm.forEach((p, i) => {
-      if (p.visibility < 0.5) return
-      const x = p.x * w, y = p.y * h
+    // --- 第 2 层：绘制连线实线 ---
+    SKELETON_CONNECTIONS.forEach(([i, j]) => {
+      const a = mirrorLm[i], b = mirrorLm[j]
+      if (a.visibility < 0.4 || b.visibility < 0.4) return
+
+      const side = getConnectionSide(i, j)
+      ctx.strokeStyle = side === 'left' ? COLORS.leftLimb : side === 'right' ? COLORS.rightLimb : COLORS.torso
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
       ctx.beginPath()
-      ctx.arc(x, y, 4, 0, Math.PI * 2)
-      ctx.fillStyle = [11,12,13,14,15,16,23,24,25,26,27,28].includes(i) ? '#06d6a0' : '#118ab2'
-      ctx.fill()
+      ctx.moveTo(a.x * w, a.y * h)
+      ctx.lineTo(b.x * w, b.y * h)
+      ctx.stroke()
     })
 
-    const anglePairs = [[11,13,15],[12,14,16],[23,25,27],[24,26,28]]
-    ctx.font = '11px sans-serif'
-    ctx.fillStyle = 'rgba(6,214,160,0.9)'
+    // --- 第 3 层：绘制关节点 ---
+    mirrorLm.forEach((p, i) => {
+      if (p.visibility < 0.4) return
+      const x = p.x * w, y = p.y * h
+      const isKey = KEY_JOINTS.includes(i)
+      const radius = isKey ? 7 : 4
+
+      // 外圈光晕
+      ctx.beginPath()
+      ctx.arc(x, y, radius + 4, 0, Math.PI * 2)
+      ctx.fillStyle = isKey ? 'rgba(6,214,160,0.2)' : 'rgba(17,138,178,0.15)'
+      ctx.fill()
+
+      // 实心圆
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.fillStyle = isKey ? COLORS.majorJoint : COLORS.minorJoint
+      ctx.fill()
+
+      // 白色边框
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    })
+
+    // --- 第 4 层：关节名称标注 ---
+    ctx.font = '10px sans-serif'
     ctx.textAlign = 'center'
-    anglePairs.forEach(([a, b, c]) => {
+    ctx.textBaseline = 'bottom'
+    KEY_JOINTS.forEach(i => {
+      const p = mirrorLm[i]
+      if (p.visibility < 0.5) return
+      const x = p.x * w, y = p.y * h
+
+      // 背景半透明矩形
+      const name = LANDMARK_NAMES[i]
+      const textWidth = ctx.measureText(name).width
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'
+      ctx.fillRect(x - textWidth / 2 - 3, y - 24, textWidth + 6, 14)
+
+      // 文字
+      ctx.fillStyle = COLORS.labelText
+      ctx.fillText(name, x, y - 12)
+    })
+
+    // --- 第 5 层：角度标注 ---
+    const anglePairs = [
+      { a: 11, b: 13, c: 15, label: '左肘' },
+      { a: 12, b: 14, c: 16, label: '右肘' },
+      { a: 23, b: 25, c: 27, label: '左膝' },
+      { a: 24, b: 26, c: 28, label: '右膝' },
+      { a: 13, b: 11, c: 23, label: '左肩' },
+      { a: 14, b: 12, c: 24, label: '右肩' },
+    ]
+
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    anglePairs.forEach(({ a, b, c, label }) => {
       const pa = mirrorLm[a], pb = mirrorLm[b], pc = mirrorLm[c]
       if (pa.visibility < 0.5 || pb.visibility < 0.5 || pc.visibility < 0.5) return
+
       const angle = this.calcAngle(pa, pb, pc)
-      ctx.fillText(Math.round(angle) + '°', pb.x * w, pb.y * h - 12)
+      const x = pb.x * w, y = pb.y * h
+
+      // 角度标注偏移方向：朝向关节外侧
+      const offsetX = (pa.x > 0.5 ? 1 : -1) * 20
+      const offsetY = -20
+      const labelX = x + offsetX
+      const labelY = y + offsetY
+
+      // 背景圆角矩形（兼容性写法）
+      const text = Math.round(angle) + '°'
+      const tw = ctx.measureText(text).width
+      const rx = labelX - tw / 2 - 4, ry = labelY - 8, rw = tw + 8, rh = 16, rr = 4
+      ctx.fillStyle = 'rgba(0,0,0,0.7)'
+      ctx.beginPath()
+      ctx.moveTo(rx + rr, ry)
+      ctx.lineTo(rx + rw - rr, ry)
+      ctx.arcTo(rx + rw, ry, rx + rw, ry + rr, rr)
+      ctx.lineTo(rx + rw, ry + rh - rr)
+      ctx.arcTo(rx + rw, ry + rh, rx + rw - rr, ry + rh, rr)
+      ctx.lineTo(rx + rr, ry + rh)
+      ctx.arcTo(rx, ry + rh, rx, ry + rh - rr, rr)
+      ctx.lineTo(rx, ry + rr)
+      ctx.arcTo(rx, ry, rx + rr, ry, rr)
+      ctx.closePath()
+      ctx.fill()
+
+      // 角度数值
+      ctx.fillStyle = COLORS.angleText
+      ctx.fillText(text, labelX, labelY)
+
+      // 连线：从标注到关节点
+      ctx.strokeStyle = 'rgba(239,71,111,0.4)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([2, 2])
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(labelX, labelY)
+      ctx.stroke()
+      ctx.setLineDash([])
     })
   },
 

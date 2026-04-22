@@ -13,10 +13,9 @@
     </view>
   </view>
 
-  <!-- 摄像头 + Canvas 叠加 -->
-  <view class="camera-wrap">
+  <!-- 摄像头区域 -->
+  <view class="camera-wrap" wx:if="{{cameraReady}}">
     <camera
-      wx:if="{{cameraReady}}"
       id="motionCamera"
       device-position="front"
       flash="off"
@@ -24,6 +23,7 @@
       resolution="medium"
       frame-size="medium"
       class="camera-view"
+      bindinitdone="onCameraInitDone"
       bindstop="onCameraStop"
       binderror="onCameraError"
     />
@@ -32,17 +32,21 @@
       id="poseCanvas"
       class="pose-canvas"
     />
-    <!-- 未启动遮罩 -->
-    <view class="camera-mask" wx:if="{{!cameraReady}}">
+    <!-- FPS / LIVE / Skeleton 标签 -->
+    <view class="overlay-top">
+      <view class="fps-tag">{{fps}} FPS</view>
+      <view class="skeleton-tag" wx:if="{{showSkeleton}}">🦴 骨骼追踪</view>
+      <view class="live-tag"><view class="live-dot"></view> LIVE</view>
+    </view>
+  </view>
+
+  <!-- 未启动遮罩 -->
+  <view class="camera-wrap camera-wrap-placeholder" wx:if="{{!cameraReady}}">
+    <view class="camera-mask">
       <view class="mask-icon">{{activeMode === 'posture' ? '🧍' : '🏃'}}</view>
       <text class="mask-title">{{activeMode === 'posture' ? '体态评估' : '运动姿态监测'}}</text>
       <text class="mask-desc">{{activeMode === 'posture' ? '站在镜头前，分析体态是否正常' : '开启摄像头，实时分析运动姿态'}}</text>
       <button class="start-btn" bindtap="startCamera">开启摄像头</button>
-    </view>
-    <!-- FPS / LIVE 标签 -->
-    <view class="overlay-top" wx:if="{{cameraReady}}">
-      <view class="fps-tag">{{fps}} FPS</view>
-      <view class="live-tag"><view class="live-dot"></view> LIVE</view>
     </view>
   </view>
 
@@ -207,5 +211,10 @@
       </view>
     </view>
   </block>
+
+  <!-- Debug Info -->
+  <view class="debug-bar" wx:if="{{debugInfo}}">
+    <text class="debug-text">{{debugInfo}}</text>
+  </view>
 
 </view>
