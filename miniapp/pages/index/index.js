@@ -121,42 +121,73 @@ Page({
   // =================== Camera ===================
   startCamera() {
     const that = this
-    wx.authorize({
-      scope: 'scope.camera',
-      success() {
-        that.setData({ cameraReady: true })
-        setTimeout(() => {
-          that.setupFrameListener()
-          that.setupCanvas()
-          that.startSession()
 
-          // HTTP 模式启动轮询
-          if (app.globalData.mode === 'http') {
-            if (that.data.activeMode === 'motion') {
-              that.startPolling()
-            } else {
-              that.startPosturePolling()
+    // 先检查是否已有权限
+    wx.getSetting({
+      success(res) {
+        if (res.authSetting['scope.camera'] === false) {
+          // 用户曾拒绝过，引导去设置
+          wx.showModal({
+            title: '需要摄像头权限',
+            content: '请在设置中允许摄像头访问',
+            confirmText: '去设置',
+            success(modalRes) {
+              if (modalRes.confirm) wx.openSetting()
             }
-          }
-        }, 500)
+          })
+          return
+        }
+
+        // 未授权过或已授权，直接启动摄像头
+        that._openCamera()
       },
       fail() {
-        wx.showModal({
-          title: '需要摄像头权限',
-          content: '请在设置中允许摄像头访问',
-          confirmText: '去设置',
-          success(res) {
-            if (res.confirm) wx.openSetting()
+        // getSetting 失败，尝试直接授权
+        wx.authorize({
+          scope: 'scope.camera',
+          success() { that._openCamera() },
+          fail() {
+            wx.showModal({
+              title: '需要摄像头权限',
+              content: '请在设置中允许摄像头访问',
+              confirmText: '去设置',
+              success(modalRes) {
+                if (modalRes.confirm) wx.openSetting()
+              }
+            })
           }
         })
       }
     })
   },
 
+  _openCamera() {
+    const that = this
+    that.setData({ cameraReady: true })
+    setTimeout(() => {
+      that.setupFrameListener()
+      that.setupCanvas()
+      that.startSession()
+
+      // HTTP 模式启动轮询
+      if (app.globalData.mode === 'http') {
+        if (that.data.activeMode === 'motion') {
+          that.startPolling()
+        } else {
+          that.startPosturePolling()
+        }
+      }
+    }, 800)
+  },
+
   onCameraError(e) {
     console.error('Camera error:', e.detail)
     wx.showToast({ title: '摄像头启动失败', icon: 'none' })
     this.setData({ cameraReady: false })
+  },
+
+  onCameraStop() {
+    console.log('Camera stopped')
   },
 
   stopCamera() {

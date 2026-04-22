@@ -20,10 +20,12 @@
       id="motionCamera"
       device-position="front"
       flash="off"
+      mode="normal"
       resolution="medium"
       frame-size="medium"
       class="camera-view"
-      error="onCameraError"
+      bindstop="onCameraStop"
+      binderror="onCameraError"
     />
     <canvas
       type="2d"
