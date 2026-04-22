@@ -181,6 +181,9 @@ Page({
     if (this._state.postureTimer) {
       clearInterval(this._state.postureTimer)
     }
+    if (this._state.statusTimer) {
+      clearInterval(this._state.statusTimer)
+    }
   },
 
   // =================== Mode Switch ===================
@@ -242,11 +245,31 @@ Page({
 
     // 等 camera 组件渲染完成后初始化帧监听
     setTimeout(() => {
+      that.setData({ debugInfo: '初始化帧监听...' })
       that.setupFrameListener()
+
+      that.setData({ debugInfo: '初始化画布...' })
       that.setupCanvas()
+
       that.startSession()
 
+      // 定时状态汇报（每 3 秒）
+      that._state.statusTimer = setInterval(() => {
+        if (!that._state.processing) {
+          const fc = that._state.frameCount
+          const rc = that._state.requestCount
+          const ec = that._state.errorCount
+          const hasFrame = !!that._state.latestFrame
+          const fSize = hasFrame ? (that._state.latestFrame.width + 'x' + that._state.latestFrame.height) : '无'
+          that.setData({ 
+            debugInfo: '状态: 帧=' + fc + ' 请求=' + rc + ' 错误=' + ec + ' 最新帧=' + fSize + ' 云托管=' + that._state.useCloudContainer 
+          })
+        }
+      }, 3000)
+
       if (app.globalData.mode === 'http') {
+        const mode = that.data.activeMode === 'motion' ? '运动监测' : '体态评估'
+        that.setData({ debugInfo: '启动' + mode + '轮询... (云托管=' + that._state.useCloudContainer + ')' })
         if (that.data.activeMode === 'motion') {
           that.startPolling()
         } else {
@@ -254,7 +277,7 @@ Page({
         }
       }
 
-      that.setData({ debugInfo: '摄像头已就绪，等待帧数据...' })
+      that.setData({ debugInfo: '摄像头就绪，等待帧数据... (已发0次/错0次)' })
     }, 1500)
   },
 
@@ -324,18 +347,32 @@ Page({
         this._state.cameraWidth = frame.width
         this._state.cameraHeight = frame.height
 
+        // 第一帧时打印确认
+        if (this._state.frameCount === 1) {
+          console.log('[Frame] First frame received:', frame.width + 'x' + frame.height, 'size=' + Math.round(frame.data.byteLength / 1024) + 'KB')
+          this.setData({ debugInfo: '✅ 帧数据已采集 ' + frame.width + 'x' + frame.height + ' (' + Math.round(frame.data.byteLength / 1024) + 'KB)' })
+        }
+
         // 每 30 帧打印一次日志
         if (this._state.frameCount % 30 === 0) {
           console.log('[Frame] #' + this._state.frameCount, frame.width + 'x' + frame.height, 'size=' + Math.round(frame.data.byteLength / 1024) + 'KB')
         }
       })
 
-      listener.start()
+      listener.start({
+        success: () => {
+          console.log('[Frame] Listener started successfully')
+          this.setData({ debugInfo: '帧监听已启动，等待帧数据...' })
+        },
+        fail: (err) => {
+          console.error('[Frame] Listener start failed:', err)
+          this.setData({ debugInfo: '❌ 帧监听启动失败: ' + (err.errMsg || JSON.stringify(err)) })
+        }
+      })
       this._state.listener = listener
-      console.log('[Frame] Listener started')
     } catch (e) {
       console.error('[Frame] Failed to setup listener:', e)
-      this.setData({ debugInfo: '帧监听失败: ' + e.message })
+      this.setData({ debugInfo: '❌ 帧监听异常: ' + e.message })
     }
   },
 
@@ -365,6 +402,13 @@ Page({
 
   async sendFrameHTTP(frame, apiPath) {
     try {
+      // Step 1: 检查帧数据
+      if (!frame || !frame.data) {
+        this.setData({ debugInfo: '❌ 帧数据为空 (frame=' + (frame ? '有' : '无') + ')' })
+        this._state.processing = false
+        return
+      }
+
       const arrayBuffer = frame.data
       const base64 = wx.arrayBufferToBase64(arrayBuffer)
 
@@ -381,12 +425,16 @@ Page({
       const sizeKB = Math.round(base64.length / 1024)
       console.log('[Request] #' + reqId, apiPath, 'frame=' + frame.width + 'x' + frame.height, 'base64=' + sizeKB + 'KB')
 
-      // 更新 debug：发送中
-      this.setData({ debugInfo: '发送第' + reqId + '次 (' + sizeKB + 'KB) ' + (this._state.useCloudContainer ? '云托管' : '直连') + '...' })
+      // Step 2: 发送中
+      const mode = this._state.useCloudContainer ? '云托管' : '直连'
+      this.setData({ debugInfo: '⏳ #' + reqId + ' 发送中 (' + sizeKB + 'KB ' + frame.width + 'x' + frame.height + ' ' + mode + ')' })
 
       let result
+      let responseStatus = 0
+      let responseRaw = ''
 
       if (this._state.useCloudContainer) {
+        // Step 3a: 云托管模式
         result = await new Promise((resolve, reject) => {
           wx.cloud.callContainer({
             config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },
@@ -398,7 +446,9 @@ Page({
               'content-type': 'application/json'
             },
             success(res) {
-              console.log('[Request] #' + reqId, 'success, status=' + res.statusCode, 'data=', JSON.stringify(res.data).substring(0, 300))
+              responseStatus = res.statusCode || 0
+              responseRaw = JSON.stringify(res.data).substring(0, 500)
+              console.log('[Request] #' + reqId, 'success, status=' + responseStatus, 'data=', responseRaw)
               resolve(res.data)
             },
             fail(err) {
@@ -408,9 +458,11 @@ Page({
           })
         })
       } else {
+        // Step 3b: 直连模式
         const apiBase = app.globalData.apiBase
         if (!apiBase) {
-          this.setData({ debugInfo: '⚠️ apiBase 为空且云托管不可用。请在云托管控制台关联服务。' })
+          this.setData({ debugInfo: '⚠️ apiBase 为空且云托管不可用。请在 app.js 配置 apiBase。' })
+          this._state.processing = false
           return
         }
         const res = await new Promise((resolve, reject) => {
@@ -419,36 +471,51 @@ Page({
             method: 'POST',
             data: payload,
             header: { 'content-type': 'application/json' },
-            success(res) { resolve(res.data) },
+            success(res) {
+              responseStatus = res.statusCode || 0
+              responseRaw = JSON.stringify(res.data).substring(0, 500)
+              resolve(res.data)
+            },
             fail(err) { reject(err) }
           })
         })
         result = res
       }
 
-      // 处理结果
-      if (result) {
-        if (result.landmarks) {
-          this.onPoseResult(result)
-        } else {
-          this.clearSkeleton()
-          this.setData({ debugInfo: '第' + reqId + '次: 未检测到人体' })
-        }
-        if (result.posture && !result.posture.error) {
-          this.onPostureResult(result.posture)
-        }
-        if (result.error) {
-          this._state.errorCount++
-          this.setData({ debugInfo: '第' + reqId + '次: ' + result.error })
-        }
-      } else {
-        this.setData({ debugInfo: '第' + reqId + '次: 返回为空' })
+      // Step 4: 解析结果
+      if (!result) {
+        this.setData({ debugInfo: '⚠️ #' + reqId + ' 返回为空 (HTTP ' + responseStatus + ')' })
+        this._state.processing = false
+        return
       }
+
+      // Step 5: 判断是否有 landmarks
+      const hasLandmarks = !!(result.landmarks && result.landmarks.length > 0)
+      const hasError = !!result.error
+
+      if (hasLandmarks) {
+        this.onPoseResult(result)
+        const visibleCount = result.landmarks.filter(p => p.visibility >= 0.4).length
+        this.setData({ debugInfo: '✅ #' + reqId + ' 检测到 ' + visibleCount + '/33 关键点 (HTTP ' + responseStatus + ')' })
+      } else if (hasError) {
+        this._state.errorCount++
+        this.clearSkeleton()
+        this.setData({ debugInfo: '❌ #' + reqId + ' 服务端错误: ' + result.error + ' (HTTP ' + responseStatus + ')' })
+      } else {
+        this.clearSkeleton()
+        this.setData({ debugInfo: '👀 #' + reqId + ' 未检测到人体 (HTTP ' + responseStatus + ')' })
+      }
+
+      // 体态评估
+      if (result.posture && !result.posture.error) {
+        this.onPostureResult(result.posture)
+      }
+
     } catch (e) {
       this._state.errorCount++
       const errMsg = e.errMsg || e.message || String(e)
       console.error('[Request] Error:', errMsg)
-      this.setData({ debugInfo: '❌ 请求失败: ' + errMsg.substring(0, 80) })
+      this.setData({ debugInfo: '❌ 请求失败: ' + errMsg.substring(0, 100) })
     } finally {
       this._state.processing = false
     }
@@ -515,10 +582,16 @@ Page({
         result = data
       }
     } catch (e) {
+      console.error('[Pose] Parse error:', e)
       return
     }
 
-    if (!result.landmarks) return
+    if (!result.landmarks) {
+      console.warn('[Pose] No landmarks in result')
+      return
+    }
+
+    console.log('[Pose] Landmarks received:', result.landmarks.length, 'points')
 
     const lm = result.landmarks
     const angles = this.computeAngles(lm)
@@ -536,7 +609,7 @@ Page({
 
     // 可见关键点数量
     const visibleCount = smoothedLm.filter(p => p.visibility >= 0.4).length
-    this.setData({ debugInfo: '检测到 ' + visibleCount + '/33 个关键点' })
+    this.setData({ debugInfo: '🦴 检测到 ' + visibleCount + '/33 关键点 | 请求=' + this._state.requestCount })
 
     // FPS
     this._state.fpsCount++
@@ -597,14 +670,25 @@ Page({
   drawSkeleton(lm) {
     const ctx = this._state.ctx
     if (!ctx) {
-      console.warn('[Draw] No canvas context')
+      console.warn('[Draw] No canvas context - cannot draw skeleton')
       return
     }
 
     const canvas = this._state.canvas
+    if (!canvas) {
+      console.warn('[Draw] No canvas node')
+      return
+    }
+
     const dpr = wx.getWindowInfo().pixelRatio
     const w = canvas.width / dpr
     const h = canvas.height / dpr
+
+    // 诊断：画布尺寸
+    if (!this._state._drawLogged) {
+      console.log('[Draw] Canvas size: ' + w + 'x' + h + ' (raw: ' + canvas.width + 'x' + canvas.height + ', dpr=' + dpr + ')')
+      this._state._drawLogged = true
+    }
 
     // 清空画布
     ctx.clearRect(0, 0, w, h)
