@@ -1,345 +1,273 @@
 # 🚀 运动监测小程序 - 微信云托管部署指南
 
-> 手把手，从零到上线，每一步都有截图位置描述和操作说明。
+> 基于实际部署踩坑经验整理，每一步都经过验证。
+> 你的信息：AppID `wx8605cad71af24bc4`，环境 `prod-d9ghp6oco3b5879a4`，GitHub `JYT2048/motion-monitor`
 
 ---
 
-## 📋 前置准备
+## 📋 前置准备（已完成 ✅）
 
-| 准备项 | 说明 | 获取方式 |
-|--------|------|---------|
-| 小程序 AppID | 注册小程序后获得 | [mp.weixin.qq.com](https://mp.weixin.qq.com) → 开发管理 → 开发设置 |
-| 微信开发者工具 | 必须安装 | [下载地址](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html) |
-| GitHub / Gitee 账号 | 推送代码用 | 注册一个即可 |
-| 微信支付 | 云托管扣费用 | 小程序后台绑定 |
-
----
-
-## 第 1 步：注册小程序
-
-1. 打开 [https://mp.weixin.qq.com](https://mp.weixin.qq.com)
-2. 点击右上角「立即注册」→ 选择「小程序」
-3. 用邮箱注册（未绑定过公众号/小程序的邮箱）
-4. 信息登记：
-   - **主体类型**：个人（不需要营业执照）
-   - **类目**：选 **工具 → 运动健康**（最匹配）
-5. 注册完成后，进入后台 → 「开发管理」→「开发设置」→ 复制 **AppID**
-
-> 💡 个人主体小程序功能够用，不需要企业认证。
+| 准备项 | 状态 | 值 |
+|--------|------|----|
+| 小程序 AppID | ✅ | `wx8605cad71af24bc4` |
+| 云开发环境 | ✅ | `prod-d9ghp6oco3b5879a4` |
+| GitHub 仓库 | ✅ | `https://github.com/JYT2048/motion-monitor` |
+| 本地代理 | ✅ | `127.0.0.1:7897`（推送 GitHub 用） |
 
 ---
 
-## 第 2 步：开通云托管（重点细化）
+## 第 1 步：确认仓库文件结构
 
-### 2.1 进入云托管入口
+云托管要求 **Dockerfile 和 container.config.json 必须在仓库根目录**。
 
-**方式 A：从小程序后台进入**
+当前仓库结构：
 
-1. 登录 [mp.weixin.qq.com](https://mp.weixin.qq.com)
-2. 左侧菜单找到 **「云开发」** → 点击进入
-3. 如果是首次使用，会提示「开通云开发」→ 点击开通
-4. 创建环境：
-   - **环境名称**：`motion-prod`（随便起）
-   - **按量付费**（选这个，不用时免费）
-5. 等待环境创建完成（约 1-2 分钟）
-
-**方式 B：从开发者工具进入**
-
-1. 打开微信开发者工具
-2. 工具栏左侧找到 **「云开发」** 按钮（一朵云图标）
-3. 同上开通并创建环境
-
-### 2.2 进入云托管控制台
-
-1. 云开发控制台打开后，顶部 Tab 栏找到 **「云托管」** 或 **「容器服务」**
-2. 首次使用会显示引导页 → 点击「开始使用」
-
-### 2.3 新建服务
-
-1. 点击 **「新建服务」**
-2. 填写配置：
-
-| 配置项 | 填写内容 | 说明 |
-|--------|---------|------|
-| 服务名称 | `motion-monitor` | **必须英文小写**，这和小程序 `X-WX-SERVICE` header 对应 |
-| 服务描述 | 运动姿态监测推理服务 | 随便写 |
-| 监听端口 | `8000` | FastAPI 监听端口 |
-
-3. 点击「确定」→ 服务创建完成
-
-### 2.4 部署版本（两种方式）
-
-#### 方式 A：代码仓库部署（推荐，支持自动更新）
-
-**① 上传代码到 Git 仓库**
-
-```bash
-cd motion-monitor/server
-
-# 初始化 Git 仓库
-git init
-git add .
-git commit -m "init: motion monitor backend"
-
-# 推到 GitHub（也可以用 Gitee）
-# 先在 GitHub 上创建仓库 motion-monitor-server
-git remote add origin https://github.com/你的用户名/motion-monitor-server.git
-git push -u origin main
+```
+motion-monitor/
+├── Dockerfile                    ← ✅ 根目录（云托管必需）
+├── container.config.json         ← ✅ 根目录（云托管必需）
+├── .gitignore
+├── DEPLOY_GUIDE.md
+├── index.html                    ← Web 版
+├── miniapp/                      ← 小程序端
+│   ├── app.js
+│   ├── app.json
+│   ├── app.wxss
+│   ├── project.config.json
+│   └── pages/
+│       ├── index/
+│       └── privacy/
+└── server/                       ← FastAPI 后端
+    ├── main.py
+    ├── Dockerfile                ← 原始位置（保留，本地构建用）
+    ├── container.config.json     ← 原始位置（保留）
+    └── requirements.txt
 ```
 
-**② 在云托管中关联仓库**
+### ⚠️ 已踩的坑
 
-1. 进入刚创建的服务 `motion-monitor` → **「部署发布」** 栏
-2. 点击 **「新建版本」**
-3. 选择方式 → **「代码仓库」**
-4. 关联 Git 仓库：
-   - 点击「授权」→ 授权 GitHub/Gitee 访问
-   - 选择你的 `motion-monitor-server` 仓库
-   - 分支选 `main`
-5. 配置确认：
-   - **Dockerfile 路径**：`/Dockerfile`（默认，不用改）
-   - **监听端口**：`8000`
-6. 点击「发布」→ 等待构建
+| 坑 | 表现 | 解决 |
+|----|------|------|
+| Dockerfile 不在根目录 | `InvalidParameter: 代码仓库中没有找到Dockerfile` | 在根目录创建 Dockerfile，`COPY server/` 取代码 |
+| `libgl1-mesa-glx` 不存在 | `E: Package 'libgl1-mesa-glx' has no installation candidate` | python:3.11-slim 基于 Debian Trixie，包名改为 `libgl1` |
 
-> ⏱ 构建时间约 3-5 分钟（首次要下载 Python 基础镜像和 MediaPipe 依赖）
-> 
-> 可以点击「查看日志」实时监控构建进度
+### 根目录 Dockerfile 内容（当前已生效）
 
-#### 方式 B：手动上传代码包（更快，适合调试）
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+COPY server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY server/ .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
 
-1. 进入服务 → **「部署发布」** → **「新建版本」**
-2. 选择方式 → **「手动上传代码包」**
-3. 上传方式选 **「文件夹」**
-4. 选择 `motion-monitor/server/` 文件夹（**必须选到文件夹这一层**）
-5. 确认上传 → 点击「发布」→ 等待构建
+---
 
-### 2.5 配置自动扩缩容
+## 第 2 步：在云托管创建服务
 
-部署成功后，进入服务 → **「设置」**→**「扩缩容配置」**：
+### 2.1 进入云托管
+
+1. 登录 [mp.weixin.qq.com](https://mp.weixin.qq.com)
+2. 左侧菜单 → **「云开发」**→ 进入云开发控制台
+3. 顶部 Tab → **「云托管」**
+
+### 2.2 新建服务
+
+1. 点击 **「新建服务」**
+2. 填写：
+
+| 配置项 | 填写 | 说明 |
+|--------|------|------|
+| 服务名称 | `motion-monitor` | **必须英文小写**，和 `X-WX-SERVICE` 一致 |
+| 服务描述 | 运动姿态监测推理服务 | 随意 |
+| 监听端口 | `8000` | FastAPI 端口 |
+
+### 2.3 关联 GitHub 仓库
+
+1. 进入服务 → **「部署发布」**→ 点击 **「新建版本」**
+2. 部署方式选 **「代码仓库」**
+3. 点击 **「授权 GitHub」**→ 授权 `JYT2048` 账号
+4. 选择仓库 `JYT2048/motion-monitor`，分支 `main`
+5. 确认配置：
+   - Dockerfile 路径：`/Dockerfile`（默认，不用改）
+   - 监听端口：`8000`
+6. 点击 **「发布」**
+
+### 2.4 等待构建
+
+- 构建时间约 **3-5 分钟**（首次下载 Python 镜像 + 安装 MediaPipe）
+- 点击 **「查看日志」** 实时监控
+- 日志中看到 `Successfully built xxx` → 构建成功
+- 看到 `Deployed version xxx` → 部署完成
+
+### 2.5 配置扩缩容
+
+进入服务 → **「设置」**→ **「扩缩容配置」**：
 
 | 配置项 | 推荐值 | 说明 |
 |--------|--------|------|
-| 最小实例 | `0` | **0 = 不用时自动关停，省钱** |
-| 最大实例 | `3` | 3 个足够个人用 |
-| CPU | `2 核` | MediaPipe 推理需要算力 |
-| 内存 | `4 GB` | MediaPipe 模型需要内存 |
-| 扩缩容策略 | CPU 阈值 `60%` | CPU 超 60% 自动扩容 |
+| 最小实例 | **0** | 不用时自动关停，**省钱** |
+| 最大实例 | 3 | 个人使用足够 |
+| 规格 | **2核4G** | MediaPipe 需要算力和内存 |
+| 扩缩容策略 | CPU 阈值 60% | 超 60% 自动扩容 |
 
-> 💡 最小实例设为 0 时，无人使用时容器会自动休眠，**不产生费用**。首次请求会有 3-5 秒冷启动延迟。
+> 💡 最小实例设为 0 时，无人使用不产生费用，但有 3-5 秒冷启动。
 
-### 2.6 验证服务是否正常
+### 2.6 验证服务
 
-部署完成后，在服务详情页会看到 **「服务地址」**（一个 https://xxx.run.tcloudbase.com 地址）。
-
-点击访问 → 如果返回：
+部署完成后，服务详情页会显示服务地址。点击访问，应返回：
 
 ```json
 {"service": "Motion Monitor API", "status": "running"}
 ```
 
-说明后端部署成功 ✅
-
 ---
 
-## 第 3 步：配置小程序项目
+## 第 3 步：配置小程序端
 
-### 3.1 修改 AppID
+### 3.1 填入 AppID
 
-打开 `motion-monitor/miniapp/project.config.json`，将 `appid` 改为你的：
+修改 `miniapp/project.config.json`：
 
 ```json
 {
-  "appid": "wx你的AppID",
-  ...
+  "appid": "wx8605cad71af24bc4"
 }
 ```
 
-### 3.2 修改 app.js 云环境配置
+### 3.2 确认 app.js 配置
+
+当前 `app.js` 无需修改（云托管通过 `wx.cloud.callContainer` 调用，不需要写死 API 地址）：
 
 ```js
 App({
-  onLaunch() {
-    // 初始化云开发（必须在 onLaunch 中调用）
-    if (wx.cloud) {
-      wx.cloud.init({
-        // env 参数填你的云环境 ID
-        // 在云开发控制台 → 设置 → 环境设置 中找到
-        env: 'motion-prod-xxxxx'  // ← 改成你的环境 ID
-      })
-    }
-  },
   globalData: {
-    mode: 'http',
-    pollInterval: 200,
+    mode: 'http',          // 云托管用 HTTP 轮询模式
+    pollInterval: 200,     // 200ms 轮询间隔
   }
 })
 ```
 
-> ⚠️ 环境 ID 不是环境名称！在云开发控制台 → 设置 → 环境设置 → 复制「环境 ID」
+### 3.3 确认 callContainer 调用
 
-### 3.3 确认 callContainer 调用参数
-
-`pages/index/index.js` 中已有云托管调用代码，确认两个关键参数：
+`pages/index/index.js` 中已包含云托管调用逻辑，关键参数：
 
 ```js
 wx.cloud.callContainer({
-  config: {
-    env: wx.cloud.DYNAMIC_CURRENT_ENV,  // 自动使用当前环境
-  },
-  path: '/api/pose',                     // API 路径
+  config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },  // 自动匹配环境
+  path: '/api/pose',                                // API 路径
   method: 'POST',
-  data: payload,
-  header: {
-    'X-WX-SERVICE': 'motion-monitor'     // ← 必须和云托管服务名一致！
-  },
+  header: { 'X-WX-SERVICE': 'motion-monitor' },    // ← 必须和云托管服务名一致
   ...
 })
 ```
 
-> ⚠️ `X-WX-SERVICE` 的值必须和第 2.3 步创建的服务名称 **完全一致**！
+> ⚠️ **`X-WX-SERVICE`** 的值必须和第 2 步创建的服务名完全一致，都是 `motion-monitor`！
 
 ### 3.4 用开发者工具打开项目
 
 1. 打开微信开发者工具
-2. 点击「导入项目」
+2. 点击 **「导入项目」**
 3. 目录选择 `motion-monitor/miniapp/`
-4. AppID 填你的
-5. 后端服务选择 **「微信云开发」**
-6. 点击「确定」→ 项目打开
+4. AppID 填 `wx8605cad71af24bc4`
+5. 后端服务选 **「微信云开发」**
+6. 确定打开
 
 ### 3.5 开发者工具中调试
 
-1. 工具栏 → 点击 **「云开发」**→ 确认云托管服务状态为「运行中」
-2. 模拟器中点击「开始监测」→ 授权摄像头
-3. 观察控制台 Network 面板，确认 `/api/pose` 请求是否正常返回
+1. 工具栏 → **「云开发」**→ 确认云托管服务状态为「运行中」
+2. 模拟器点击「开始监测」→ 授权摄像头
+3. 观察控制台 Network → `/api/pose` 是否正常返回
 
 ---
 
 ## 第 4 步：真机调试
 
-1. 开发者工具 → 点击 **「预览」** 或 **「真机调试」**
-2. 用手机微信扫码
-3. 手机上测试：
-   - 点击「开始监测」→ 允许摄像头权限
-   - 站在摄像头前 → 看骨架是否渲染
-   - 做深蹲/举手 → 看计数是否变化
+1. 开发者工具 → **「预览」** 或 **「真机调试」**
+2. 手机微信扫码
+3. 测试项：
+   - [ ] 摄像头权限授权正常
+   - [ ] 站在镜头前 → 骨架渲染
+   - [ ] 做深蹲 → 计数增加
+   - [ ] 举手 → 识别正确
+   - [ ] FPS 稳定（云托管 HTTP 模式约 3-5 FPS）
 
-> ⚠️ 真机调试需要勾选开发者工具 → 详情 → 「调试时检查合法域名」**取消勾选**（仅调试阶段）
+> ⚠️ 调试阶段需取消勾选：详情 → 本地设置 → **「不校验合法域名」**
 
 ---
 
-## 第 5 步：提交审核
+## 第 5 步：提交审核 → 发布上线
 
 ### 5.1 上传代码
 
-1. 开发者工具 → 点击 **「上传」** 按钮
-2. 填写版本号：`1.0.0`
-3. 填写备注：`运动姿态监测小程序，首版发布`
-4. 点击「上传」
+1. 开发者工具 → **「上传」**
+2. 版本号：`1.0.0`
+3. 备注：`运动姿态监测小程序，首版发布`
 
 ### 5.2 提交审核
 
 1. 登录 [mp.weixin.qq.com](https://mp.weixin.qq.com)
-2. **版本管理** → 找到刚上传的开发版
-3. 点击 **「提交审核」**
-4. 填写审核信息：
+2. **版本管理** → 找到开发版 → **「提交审核」**
+3. 填写：
 
-| 字段 | 填写内容 |
-|------|---------|
-| 功能页面 | 选 `pages/index/index` |
-| 页面功能描述 | 通过摄像头实时检测用户运动姿态，提供关节角度分析、动作识别和计数功能 |
+| 字段 | 内容 |
+|------|------|
+| 功能页面 | `pages/index/index` |
+| 功能描述 | 通过摄像头实时检测运动姿态，提供关节角度分析和动作计数 |
 | 类目 | 工具 → 运动健康 |
-| 测试账号 | （个人小程序不需要） |
 | 隐私协议 | ✅ 已包含 `pages/privacy/privacy` |
 
-### 5.3 审核注意事项
+### 5.3 审核通过后发布
 
-| 审核重点 | 我们的应对 |
-|----------|-----------|
-| 摄像头用途说明 | 隐私协议页面已说明「仅本地处理，不存储不上传」 |
-| 用户数据安全 | 视频帧处理后即丢弃，只返回关键点坐标 |
-| 测试能力验证 | 审核员可以直接用摄像头体验 |
-| 类目匹配 | 「运动健康」完全匹配 |
-
-### 5.4 发布上线
-
-审核通过后（1-3 天）：
-1. mp 后台 → 版本管理 → 点击 **「发布」**
-2. 选择「全量发布」→ 确认
-3. 用户即可搜索到你的小程序 🎉
+1-3 天审核通过后 → 版本管理 → **「发布」**→ 全量发布 → 上线 🎉
 
 ---
 
 ## 💰 费用预估
 
-### 云托管按量计费
-
-| 资源 | 单价 | 预估月费 |
-|------|------|---------|
-| CPU | 0.055 元/核/分钟 | ~20 元（每天用 30 分钟） |
+| 资源 | 单价 | 预估月费（每天 30 分钟） |
+|------|------|------------------------|
+| CPU | 0.055 元/核/分钟 | ~20 元 |
 | 内存 | 0.015 元/GB/分钟 | ~10 元 |
 | 流量 | 0.8 元/GB | ~5 元 |
 | **合计** | | **约 35 元/月** |
 
-> 💡 最小实例设为 0 → 不用时完全免费。冷启动约 3-5 秒。
-
-### 对比自建服务器
-
-| 方案 | 月费 | 优势 | 劣势 |
-|------|------|------|------|
-| 云托管 | ~35 元 | 不用备案、自动扩缩 | 冷启动延迟 |
-| 腾讯云轻量 | ~50 元 | 无冷启动 | 需备案域名 |
+> 最小实例设 0 → 不用时免费。冷启动 3-5 秒。
 
 ---
 
-## 🔧 常见问题排查
+## 🔧 常见问题
 
-### Q1: callContainer 返回 404
-- 检查 `X-WX-SERVICE` 是否和云托管服务名一致
-- 检查 `path` 路径是否正确（`/api/pose`）
-- 检查云托管服务是否在运行状态
-
-### Q2: 云托管构建失败
-- 检查 Dockerfile 语法
-- 检查 requirements.txt 是否完整
-- 查看构建日志定位具体错误
-
-### Q3: 推理返回空 landmarks
-- 确认摄像头画面有完整人体
-- 尝试降低 minDetectionConfidence
-- 检查帧数据是否正确编码
-
-### Q4: 冷启动太慢
-- 将最小实例设为 `1`（但会增加费用）
-- 或优化 Docker 镜像大小（用 alpine 基础镜像）
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `Dockerfile not found` | Dockerfile 不在仓库根目录 | 在根目录建 Dockerfile，`COPY server/` |
+| `libgl1-mesa-glx no installation candidate` | Debian Trixie 更名 | 改用 `libgl1` |
+| `callContainer 404` | 服务名不匹配 | `X-WX-SERVICE` 值 = 云托管服务名 |
+| 冷启动太慢 | 最小实例为 0 | 改最小实例为 1（但会增加费用） |
+| 推理返回空 landmarks | 画面无人/置信度低 | 确保完整人体在镜头中 |
 
 ---
 
-## 📁 完整项目文件清单
+## 📝 更新代码后的推送流程
 
+```powershell
+cd "c:\Users\h1764\WorkBuddy\20260421162748\motion-monitor"
+
+# 1. 暂存修改
+git add .
+
+# 2. 提交
+git commit -m "描述你的修改"
+
+# 3. 推送（需要代理）
+$env:https_proxy="http://127.0.0.1:7897"
+$env:http_proxy="http://127.0.0.1:7897"
+git push origin main
 ```
-motion-monitor/
-├── DEPLOY_GUIDE.md                     ← 本文档
-├── index.html                          ← Web 版
-├── miniapp/                            ← 小程序端
-│   ├── app.js                          ← 入口（云开发 init + callContainer 配置）
-│   ├── app.json                        ← 页面路由 + 权限声明
-│   ├── app.wxss                        ← 全局样式
-│   ├── project.config.json             ← AppID + 云开发配置
-│   └── pages/
-│       ├── index/                      ← 主页
-│       │   ├── index.js                ← 摄像头 + 帧采集 + 云托管调用 + Canvas 渲染
-│       │   ├── index.wxml
-│       │   ├── index.wxss
-│       │   └── index.json
-│       └── privacy/                    ← 隐私协议（审核必须）
-│           ├── privacy.js
-│           ├── privacy.wxml
-│           ├── privacy.wxss
-│           └── privacy.json
-└── server/                             ← 后端（部署到云托管）
-    ├── main.py                         ← FastAPI + MediaPipe 推理
-    ├── Dockerfile                      ← 容器镜像定义
-    ├── container.config.json           ← 云托管扩缩容配置
-    └── requirements.txt                ← Python 依赖
-```
+
+推送后，云托管会自动检测到新版本，在「部署发布」页面确认即可。
