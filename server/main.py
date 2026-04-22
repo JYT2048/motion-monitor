@@ -1,6 +1,7 @@
 """
 Motion Monitor - FastAPI Backend
 MediaPipe Pose 推理服务，通过 WebSocket 接收帧数据，返回姿态关键点
+适配微信云托管部署
 """
 
 import asyncio
@@ -8,7 +9,9 @@ import base64
 import io
 import json
 import logging
+import signal
 import time
+from contextlib import asynccontextmanager
 from typing import Optional
 
 import cv2
@@ -19,10 +22,58 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
 # Logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger("motion-monitor")
 
-app = FastAPI(title="Motion Monitor API")
+# =================== MediaPipe Pose (Global) ===================
+mp_pose = mp.solutions.pose
+pose: Optional[mp_pose.Pose] = None
+
+
+def init_pose():
+    """初始化 MediaPipe Pose 模型"""
+    global pose
+    if pose is not None:
+        return
+    logger.info("Initializing MediaPipe Pose model...")
+    start = time.time()
+    pose = mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=1,
+        smooth_landmarks=True,
+        enable_segmentation=False,
+        min_detection_confidence=0.6,
+        min_tracking_confidence=0.5,
+    )
+    elapsed = time.time() - start
+    logger.info(f"MediaPipe Pose model loaded in {elapsed:.2f}s")
+
+
+def cleanup_pose():
+    """释放 MediaPipe Pose 模型资源"""
+    global pose
+    if pose is not None:
+        logger.info("Releasing MediaPipe Pose model...")
+        pose.close()
+        pose = None
+        logger.info("MediaPipe Pose model released")
+
+
+# =================== Lifespan (Startup/Shutdown) ===================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理：启动时加载模型，关闭时释放资源"""
+    init_pose()
+    logger.info("Motion Monitor API started successfully")
+    yield
+    cleanup_pose()
+    logger.info("Motion Monitor API shutdown complete")
+
+
+app = FastAPI(title="Motion Monitor API", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -32,21 +83,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =================== MediaPipe Pose ===================
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(
-    static_image_mode=False,
-    model_complexity=1,
-    smooth_landmarks=True,
-    enable_segmentation=False,
-    min_detection_confidence=0.6,
-    min_tracking_confidence=0.5,
-)
 
-
+# =================== Frame Processing ===================
 def process_frame(image_np: np.ndarray) -> Optional[dict]:
     """处理单帧图像，返回关键点"""
-    # MediaPipe needs RGB
+    if pose is None:
+        logger.warning("Pose model not initialized")
+        return None
+
+    # MediaPipe Needs RGB
     rgb = cv2.cvtColor(image_np, cv2.COLOR_RGBA2RGB) if image_np.shape[2] == 4 else image_np
     results = pose.process(rgb)
 
@@ -102,7 +147,11 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "pose_loaded": pose is not None}
+    """云托管健康检查端点"""
+    return {
+        "status": "ok",
+        "pose_loaded": pose is not None,
+    }
 
 
 # =================== WebSocket ===================
@@ -156,10 +205,10 @@ async def ws_pose(websocket: WebSocket):
 # =================== HTTP Post fallback ===================
 @app.post("/api/pose")
 async def api_pose(body: dict):
-    """HTTP POST 备选方案：发送单帧图片，返回关键点"""
+    """HTTP POST 备选方案：发送单帧图片，返回关键点（微信云托管 callContainer 使用）"""
     img_np = decode_frame(body)
     if img_np is None:
-        return {"error": "Invalid frame data"}
+        return {"error": "Invalid frame data", "landmarks": None}
 
     result = process_frame(img_np)
     return {"landmarks": result["landmarks"] if result else None}

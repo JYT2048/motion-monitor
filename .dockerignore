@@ -1,0 +1,32 @@
+# 小程序端代码 - 不需要打包进后端容器
+miniapp/
+
+# Web 前端 - 不需要
+index.html
+
+# 文档 - 不需要
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS 文件
+Thumbs.db
+.DS_Store
+
+# 云托管配置（容器内部不需要）
+container.config.json

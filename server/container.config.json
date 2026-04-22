@@ -1,9 +1,9 @@
 {
   "containerPort": 8000,
   "minNum": 0,
-  "maxNum": 5,
-  "cpu": 2,
-  "mem": 4096,
+  "maxNum": 3,
+  "cpu": 1,
+  "mem": 2048,
   "policyType": "cpu",
   "policyThreshold": 60,
   "customLogs": "stdout",
