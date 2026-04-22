@@ -1,0 +1,11 @@
+{
+  "containerPort": 8000,
+  "minNum": 0,
+  "maxNum": 5,
+  "cpu": 2,
+  "mem": 4096,
+  "policyType": "cpu",
+  "policyThreshold": 60,
+  "customLogs": "stdout",
+  "envVariables": {}
+}

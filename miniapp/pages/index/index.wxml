@@ -1,0 +1,127 @@
+<!--pages/index/index.wxml-->
+<view class="container">
+
+  <!-- 摄像头 + Canvas 叠加 -->
+  <view class="camera-wrap">
+    <camera
+      wx:if="{{cameraReady}}"
+      id="motionCamera"
+      device-position="front"
+      flash="off"
+      resolution="medium"
+      frame-size="medium"
+      class="camera-view"
+      error="onCameraError"
+    />
+    <canvas
+      type="2d"
+      id="poseCanvas"
+      class="pose-canvas"
+    />
+    <!-- 未启动遮罩 -->
+    <view class="camera-mask" wx:if="{{!cameraReady}}">
+      <view class="mask-icon">🏃</view>
+      <text class="mask-title">运动姿态监测</text>
+      <text class="mask-desc">开启摄像头，实时分析运动姿态</text>
+      <button class="start-btn" bindtap="startCamera">开启摄像头</button>
+    </view>
+    <!-- FPS / LIVE 标签 -->
+    <view class="overlay-top" wx:if="{{cameraReady}}">
+      <view class="fps-tag">{{fps}} FPS</view>
+      <view class="live-tag"><view class="live-dot"></view> LIVE</view>
+    </view>
+  </view>
+
+  <!-- 运动状态 -->
+  <view class="status-card">
+    <text class="status-emoji">{{motionEmoji}}</text>
+    <text class="status-label">{{motionLabel}}</text>
+    <text class="status-sub">{{motionSub}}</text>
+  </view>
+
+  <!-- 关节角度 -->
+  <view class="card">
+    <view class="card-title">📐 关节角度</view>
+    <view class="angles-grid">
+      <view class="angle-item">
+        <text class="angle-name">左肘</text>
+        <text class="angle-value">{{angles.leftElbow}}°</text>
+      </view>
+      <view class="angle-item">
+        <text class="angle-name">右肘</text>
+        <text class="angle-value">{{angles.rightElbow}}°</text>
+      </view>
+      <view class="angle-item">
+        <text class="angle-name">左膝</text>
+        <text class="angle-value">{{angles.leftKnee}}°</text>
+      </view>
+      <view class="angle-item">
+        <text class="angle-name">右膝</text>
+        <text class="angle-value">{{angles.rightKnee}}°</text>
+      </view>
+      <view class="angle-item">
+        <text class="angle-name">左肩</text>
+        <text class="angle-value">{{angles.leftShoulder}}°</text>
+      </view>
+      <view class="angle-item">
+        <text class="angle-name">右肩</text>
+        <text class="angle-value">{{angles.rightShoulder}}°</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 动作计数 -->
+  <view class="card">
+    <view class="card-header">
+      <text class="card-title">🔢 动作计数</text>
+      <text class="reset-btn" bindtap="resetCounters">重置</text>
+    </view>
+    <view class="counter-grid">
+      <view class="counter-item">
+        <text class="counter-name">深蹲</text>
+        <text class="counter-value">{{counters.squat}}</text>
+      </view>
+      <view class="counter-item">
+        <text class="counter-name">举手</text>
+        <text class="counter-value">{{counters.raise}}</text>
+      </view>
+      <view class="counter-item">
+        <text class="counter-name">跳跃</text>
+        <text class="counter-value">{{counters.jump}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 稳定性 -->
+  <view class="card">
+    <view class="card-title">🎯 身体稳定性</view>
+    <view class="bar-row">
+      <text class="bar-name">重心偏移</text>
+      <view class="bar-track"><view class="bar-fill" style="width:{{stability}}%"></view></view>
+      <text class="bar-val">{{stability}}%</text>
+    </view>
+    <view class="bar-row">
+      <text class="bar-name">左右对称</text>
+      <view class="bar-track"><view class="bar-fill" style="width:{{symmetry}}%"></view></view>
+      <text class="bar-val">{{symmetry}}%</text>
+    </view>
+  </view>
+
+  <!-- 会话统计 -->
+  <view class="card">
+    <view class="card-title">📊 会话统计</view>
+    <view class="stat-row">
+      <text class="stat-label">检测时长</text>
+      <text class="stat-value">{{sessionTime}}</text>
+    </view>
+    <view class="stat-row">
+      <text class="stat-label">运动时长</text>
+      <text class="stat-value">{{activeTime}}</text>
+    </view>
+    <view class="stat-row">
+      <text class="stat-label">总动作数</text>
+      <text class="stat-value">{{totalActions}}</text>
+    </view>
+  </view>
+
+</view>

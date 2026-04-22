@@ -1,0 +1,23 @@
+<!--pages/privacy/privacy.wxml-->
+<view class="privacy-page">
+  <view class="privacy-card">
+    <text class="privacy-title">隐私保护指引</text>
+    <view class="privacy-section">
+      <text class="privacy-heading">📷 摄像头使用说明</text>
+      <text class="privacy-text">本应用使用摄像头实时采集您的运动视频，用于姿态识别和分析。视频帧数据会发送到服务器进行 AI 推理处理，我们不会存储您的视频或图像数据。</text>
+    </view>
+    <view class="privacy-section">
+      <text class="privacy-heading">🔒 数据安全</text>
+      <text class="privacy-text">• 视频帧仅用于实时姿态分析，处理后立即丢弃</text>
+      <text class="privacy-text">• 不会将您的影像数据保存到服务器</text>
+      <text class="privacy-text">• 不会将您的数据分享给任何第三方</text>
+      <text class="privacy-text">• 所有数据传输均使用加密连接</text>
+    </view>
+    <view class="privacy-section">
+      <text class="privacy-heading">📋 收集的信息</text>
+      <text class="privacy-text">• 摄像头实时视频帧（仅处理，不存储）</text>
+      <text class="privacy-text">• 运动统计数据（本地存储，不上传）</text>
+    </view>
+    <button class="agree-btn" bindtap="agreePrivacy">同意并继续</button>
+  </view>
+</view>

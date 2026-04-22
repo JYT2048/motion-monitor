@@ -1,0 +1,20 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/privacy/privacy"
+  ],
+  "window": {
+    "navigationBarTitleText": "运动姿态监测",
+    "navigationBarBackgroundColor": "#0a0e17",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0a0e17"
+  },
+  "permission": {
+    "scope.camera": {
+      "desc": "需要使用摄像头进行运动姿态监测"
+    }
+  },
+  "__usePrivacyCheck__": true,
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}
