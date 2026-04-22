@@ -1,6 +1,18 @@
 <!--pages/index/index.wxml-->
 <view class="container">
 
+  <!-- 模式切换 Tab -->
+  <view class="mode-tabs">
+    <view class="mode-tab {{activeMode === 'motion' ? 'active' : ''}}" data-mode="motion" bindtap="switchMode">
+      <text class="mode-tab-icon">🏃</text>
+      <text class="mode-tab-text">运动监测</text>
+    </view>
+    <view class="mode-tab {{activeMode === 'posture' ? 'active' : ''}}" data-mode="posture" bindtap="switchMode">
+      <text class="mode-tab-icon">🧍</text>
+      <text class="mode-tab-text">体态评估</text>
+    </view>
+  </view>
+
   <!-- 摄像头 + Canvas 叠加 -->
   <view class="camera-wrap">
     <camera
@@ -20,9 +32,9 @@
     />
     <!-- 未启动遮罩 -->
     <view class="camera-mask" wx:if="{{!cameraReady}}">
-      <view class="mask-icon">🏃</view>
-      <text class="mask-title">运动姿态监测</text>
-      <text class="mask-desc">开启摄像头，实时分析运动姿态</text>
+      <view class="mask-icon">{{activeMode === 'posture' ? '🧍' : '🏃'}}</view>
+      <text class="mask-title">{{activeMode === 'posture' ? '体态评估' : '运动姿态监测'}}</text>
+      <text class="mask-desc">{{activeMode === 'posture' ? '站在镜头前，分析体态是否正常' : '开启摄像头，实时分析运动姿态'}}</text>
       <button class="start-btn" bindtap="startCamera">开启摄像头</button>
     </view>
     <!-- FPS / LIVE 标签 -->
@@ -32,96 +44,166 @@
     </view>
   </view>
 
-  <!-- 运动状态 -->
-  <view class="status-card">
-    <text class="status-emoji">{{motionEmoji}}</text>
-    <text class="status-label">{{motionLabel}}</text>
-    <text class="status-sub">{{motionSub}}</text>
-  </view>
+  <!-- =================== 运动监测模式 =================== -->
+  <block wx:if="{{activeMode === 'motion'}}">
+    <!-- 运动状态 -->
+    <view class="status-card">
+      <text class="status-emoji">{{motionEmoji}}</text>
+      <text class="status-label">{{motionLabel}}</text>
+      <text class="status-sub">{{motionSub}}</text>
+    </view>
 
-  <!-- 关节角度 -->
-  <view class="card">
-    <view class="card-title">📐 关节角度</view>
-    <view class="angles-grid">
-      <view class="angle-item">
-        <text class="angle-name">左肘</text>
-        <text class="angle-value">{{angles.leftElbow}}°</text>
-      </view>
-      <view class="angle-item">
-        <text class="angle-name">右肘</text>
-        <text class="angle-value">{{angles.rightElbow}}°</text>
-      </view>
-      <view class="angle-item">
-        <text class="angle-name">左膝</text>
-        <text class="angle-value">{{angles.leftKnee}}°</text>
-      </view>
-      <view class="angle-item">
-        <text class="angle-name">右膝</text>
-        <text class="angle-value">{{angles.rightKnee}}°</text>
-      </view>
-      <view class="angle-item">
-        <text class="angle-name">左肩</text>
-        <text class="angle-value">{{angles.leftShoulder}}°</text>
-      </view>
-      <view class="angle-item">
-        <text class="angle-name">右肩</text>
-        <text class="angle-value">{{angles.rightShoulder}}°</text>
+    <!-- 关节角度 -->
+    <view class="card">
+      <view class="card-title">📐 关节角度</view>
+      <view class="angles-grid">
+        <view class="angle-item">
+          <text class="angle-name">左肘</text>
+          <text class="angle-value">{{angles.leftElbow}}°</text>
+        </view>
+        <view class="angle-item">
+          <text class="angle-name">右肘</text>
+          <text class="angle-value">{{angles.rightElbow}}°</text>
+        </view>
+        <view class="angle-item">
+          <text class="angle-name">左膝</text>
+          <text class="angle-value">{{angles.leftKnee}}°</text>
+        </view>
+        <view class="angle-item">
+          <text class="angle-name">右膝</text>
+          <text class="angle-value">{{angles.rightKnee}}°</text>
+        </view>
+        <view class="angle-item">
+          <text class="angle-name">左肩</text>
+          <text class="angle-value">{{angles.leftShoulder}}°</text>
+        </view>
+        <view class="angle-item">
+          <text class="angle-name">右肩</text>
+          <text class="angle-value">{{angles.rightShoulder}}°</text>
+        </view>
       </view>
     </view>
-  </view>
 
-  <!-- 动作计数 -->
-  <view class="card">
-    <view class="card-header">
-      <text class="card-title">🔢 动作计数</text>
-      <text class="reset-btn" bindtap="resetCounters">重置</text>
+    <!-- 动作计数 -->
+    <view class="card">
+      <view class="card-header">
+        <text class="card-title">🔢 动作计数</text>
+        <text class="reset-btn" bindtap="resetCounters">重置</text>
+      </view>
+      <view class="counter-grid">
+        <view class="counter-item">
+          <text class="counter-name">深蹲</text>
+          <text class="counter-value">{{counters.squat}}</text>
+        </view>
+        <view class="counter-item">
+          <text class="counter-name">举手</text>
+          <text class="counter-value">{{counters.raise}}</text>
+        </view>
+        <view class="counter-item">
+          <text class="counter-name">跳跃</text>
+          <text class="counter-value">{{counters.jump}}</text>
+        </view>
+      </view>
     </view>
-    <view class="counter-grid">
-      <view class="counter-item">
-        <text class="counter-name">深蹲</text>
-        <text class="counter-value">{{counters.squat}}</text>
-      </view>
-      <view class="counter-item">
-        <text class="counter-name">举手</text>
-        <text class="counter-value">{{counters.raise}}</text>
-      </view>
-      <view class="counter-item">
-        <text class="counter-name">跳跃</text>
-        <text class="counter-value">{{counters.jump}}</text>
-      </view>
-    </view>
-  </view>
 
-  <!-- 稳定性 -->
-  <view class="card">
-    <view class="card-title">🎯 身体稳定性</view>
-    <view class="bar-row">
-      <text class="bar-name">重心偏移</text>
-      <view class="bar-track"><view class="bar-fill" style="width:{{stability}}%"></view></view>
-      <text class="bar-val">{{stability}}%</text>
+    <!-- 稳定性 -->
+    <view class="card">
+      <view class="card-title">🎯 身体稳定性</view>
+      <view class="bar-row">
+        <text class="bar-name">重心偏移</text>
+        <view class="bar-track"><view class="bar-fill" style="width:{{stability}}%"></view></view>
+        <text class="bar-val">{{stability}}%</text>
+      </view>
+      <view class="bar-row">
+        <text class="bar-name">左右对称</text>
+        <view class="bar-track"><view class="bar-fill" style="width:{{symmetry}}%"></view></view>
+        <text class="bar-val">{{symmetry}}%</text>
+      </view>
     </view>
-    <view class="bar-row">
-      <text class="bar-name">左右对称</text>
-      <view class="bar-track"><view class="bar-fill" style="width:{{symmetry}}%"></view></view>
-      <text class="bar-val">{{symmetry}}%</text>
-    </view>
-  </view>
 
-  <!-- 会话统计 -->
-  <view class="card">
-    <view class="card-title">📊 会话统计</view>
-    <view class="stat-row">
-      <text class="stat-label">检测时长</text>
-      <text class="stat-value">{{sessionTime}}</text>
+    <!-- 会话统计 -->
+    <view class="card">
+      <view class="card-title">📊 会话统计</view>
+      <view class="stat-row">
+        <text class="stat-label">检测时长</text>
+        <text class="stat-value">{{sessionTime}}</text>
+      </view>
+      <view class="stat-row">
+        <text class="stat-label">运动时长</text>
+        <text class="stat-value">{{activeTime}}</text>
+      </view>
+      <view class="stat-row">
+        <text class="stat-label">总动作数</text>
+        <text class="stat-value">{{totalActions}}</text>
+      </view>
     </view>
-    <view class="stat-row">
-      <text class="stat-label">运动时长</text>
-      <text class="stat-value">{{activeTime}}</text>
+  </block>
+
+  <!-- =================== 体态评估模式 =================== -->
+  <block wx:if="{{activeMode === 'posture'}}">
+    <!-- 总评 -->
+    <view class="posture-score-card {{postureStatus === 'good' ? 'score-good' : postureStatus === 'warning' ? 'score-warning' : postureStatus === 'poor' ? 'score-poor' : ''}}">
+      <view class="score-top">
+        <text class="score-emoji">{{postureEmoji || '⏳'}}</text>
+        <view class="score-right">
+          <text class="score-label">{{postureDetails.length ? '体态综合评分' : '等待评估'}}</text>
+          <text class="score-number">{{postureScore}}</text>
+        </view>
+      </view>
+      <text class="score-hint" wx:if="{{!postureDetails.length}}">请站在镜头前，保持自然站姿</text>
     </view>
-    <view class="stat-row">
-      <text class="stat-label">总动作数</text>
-      <text class="stat-value">{{totalActions}}</text>
+
+    <!-- 各项指标 -->
+    <view class="card" wx:if="{{postureDetails.length}}">
+      <view class="card-title">📋 体态详细分析</view>
+      <view class="posture-list">
+        <view class="posture-item {{item.status}}" wx:for="{{postureDetails}}" wx:key="key">
+          <view class="posture-item-left">
+            <view class="posture-dot"></view>
+            <text class="posture-item-label">{{item.label}}</text>
+          </view>
+          <view class="posture-item-right">
+            <text class="posture-item-value">{{item.value}}</text>
+            <text class="posture-item-desc">{{item.desc}}</text>
+          </view>
+        </view>
+      </view>
     </view>
-  </view>
+
+    <!-- 体态建议 -->
+    <view class="card" wx:if="{{postureDetails.length}}">
+      <view class="card-title">💡 改善建议</view>
+      <view class="advice-list">
+        <view class="advice-item" wx:if="{{posture.details.head_forward.status !== 'normal'}}">
+          <text class="advice-icon">🦒</text>
+          <text class="advice-text">头部前倾：注意收下巴，耳垂对齐肩峰，避免长时间低头看手机</text>
+        </view>
+        <view class="advice-item" wx:if="{{posture.details.shoulder_level.status !== 'normal'}}">
+          <text class="advice-icon">⚖️</text>
+          <text class="advice-text">高低肩：注意背包双肩交替，做肩部平衡拉伸，避免单侧发力</text>
+        </view>
+        <view class="advice-item" wx:if="{{posture.details.rounded_shoulder.status !== 'normal'}}">
+          <text class="advice-icon">🤷</text>
+          <text class="advice-text">圆肩：多做肩胛骨后缩练习（夹背），避免含胸驼背</text>
+        </view>
+        <view class="advice-item" wx:if="{{posture.details.pelvic_tilt.status !== 'normal'}}">
+          <text class="advice-icon">🧘</text>
+          <text class="advice-text">骨盆前倾：加强核心肌群（平板支撑），拉伸髂腰肌，避免久坐塌腰</text>
+        </view>
+        <view class="advice-item" wx:if="{{posture.details.scoliosis.status !== 'normal'}}">
+          <text class="advice-icon">↔️</text>
+          <text class="advice-text">脊柱侧弯：注意坐姿对称，建议就医检查，做施罗特矫正体操</text>
+        </view>
+        <view class="advice-item" wx:if="{{posture.details.knee.status !== 'normal'}}">
+          <text class="advice-icon">🦵</text>
+          <text class="advice-text">膝关节：注意行走站立体态，避免跷二郎腿，加强股四头肌锻炼</text>
+        </view>
+        <view class="advice-item" wx:if="{{posture && posture.overall_score >= 80}}">
+          <text class="advice-icon">🎉</text>
+          <text class="advice-text">体态良好！继续保持正确坐姿和站姿，定期评估</text>
+        </view>
+      </view>
+    </view>
+  </block>
 
 </view>

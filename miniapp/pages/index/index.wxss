@@ -264,3 +264,173 @@
   font-size: 26rpx;
   font-weight: 700;
 }
+
+/* =================== Mode Tabs =================== */
+.mode-tabs {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+.mode-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 16rpx 0;
+  background: #111827;
+  border: 1px solid #1e293b;
+  border-radius: 16rpx;
+  transition: all 0.3s;
+}
+.mode-tab.active {
+  background: rgba(6,214,160,0.1);
+  border-color: rgba(6,214,160,0.5);
+}
+.mode-tab-icon {
+  font-size: 32rpx;
+}
+.mode-tab-text {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.mode-tab.active .mode-tab-text {
+  color: #06d6a0;
+}
+
+/* =================== Posture Score Card =================== */
+.posture-score-card {
+  text-align: center;
+  padding: 32rpx 24rpx;
+  margin-top: 16rpx;
+  background: #111827;
+  border: 1px solid #1e293b;
+  border-radius: 20rpx;
+  transition: all 0.3s;
+}
+.posture-score-card.score-good {
+  border-color: rgba(6,214,160,0.4);
+  background: linear-gradient(135deg, rgba(6,214,160,0.08), #111827);
+}
+.posture-score-card.score-warning {
+  border-color: rgba(255,209,102,0.4);
+  background: linear-gradient(135deg, rgba(255,209,102,0.08), #111827);
+}
+.posture-score-card.score-poor {
+  border-color: rgba(239,71,111,0.4);
+  background: linear-gradient(135deg, rgba(239,71,111,0.08), #111827);
+}
+.score-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+}
+.score-emoji {
+  font-size: 80rpx;
+}
+.score-right {
+  text-align: left;
+}
+.score-label {
+  display: block;
+  font-size: 24rpx;
+  color: #94a3b8;
+  margin-bottom: 4rpx;
+}
+.score-number {
+  display: block;
+  font-size: 64rpx;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.score-good .score-number { color: #06d6a0; }
+.score-warning .score-number { color: #ffd166; }
+.score-poor .score-number { color: #ef476f; }
+.score-hint {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #64748b;
+}
+
+/* =================== Posture Detail List =================== */
+.posture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+.posture-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16rpx 20rpx;
+  background: rgba(30,41,59,0.3);
+  border-radius: 12rpx;
+  border-left: 6rpx solid #06d6a0;
+}
+.posture-item.warning {
+  border-left-color: #ffd166;
+}
+.posture-item.poor {
+  border-left-color: #ef476f;
+}
+.posture-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.posture-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #06d6a0;
+}
+.posture-item.warning .posture-dot { background: #ffd166; }
+.posture-item.poor .posture-dot { background: #ef476f; }
+.posture-item-label {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+.posture-item-right {
+  text-align: right;
+}
+.posture-item-value {
+  display: block;
+  font-size: 22rpx;
+  color: #64748b;
+}
+.posture-item-desc {
+  display: block;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.posture-item.normal .posture-item-desc { color: #06d6a0; }
+.posture-item.warning .posture-item-desc { color: #ffd166; }
+.posture-item.poor .posture-item-desc { color: #ef476f; }
+
+/* =================== Advice =================== */
+.advice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.advice-item {
+  display: flex;
+  gap: 12rpx;
+  padding: 16rpx;
+  background: rgba(30,41,59,0.3);
+  border-radius: 12rpx;
+}
+.advice-icon {
+  font-size: 32rpx;
+  flex-shrink: 0;
+}
+.advice-text {
+  font-size: 24rpx;
+  color: #cbd5e1;
+  line-height: 1.6;
+}

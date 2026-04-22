@@ -5,6 +5,8 @@ Page({
   data: {
     cameraReady: false,
     fps: 0,
+    // Mode switch: 'motion' | 'posture'
+    activeMode: 'motion',
     // Motion
     motionEmoji: '🧍',
     motionLabel: '等待检测',
@@ -27,6 +29,12 @@ Page({
     sessionTime: '00:00',
     activeTime: '00:00',
     totalActions: 0,
+    // Posture assessment
+    posture: null,
+    postureScore: '--',
+    postureStatus: '',
+    postureEmoji: '',
+    postureDetails: [],
   },
 
   // Internal state
@@ -47,6 +55,7 @@ Page({
     timerInterval: null,
     processing: false,
     pollTimer: null,
+    postureTimer: null,
     frameQueue: [],
     useCloudContainer: false,
   },
@@ -80,6 +89,33 @@ Page({
     if (this._state.pollTimer) {
       clearInterval(this._state.pollTimer)
     }
+    if (this._state.postureTimer) {
+      clearInterval(this._state.postureTimer)
+    }
+  },
+
+  // =================== Mode Switch ===================
+  switchMode(e) {
+    const mode = e.currentTarget.dataset.mode
+    this.setData({ activeMode: mode })
+
+    // 切换模式时重置对应的轮询
+    if (this._state.pollTimer) {
+      clearInterval(this._state.pollTimer)
+      this._state.pollTimer = null
+    }
+    if (this._state.postureTimer) {
+      clearInterval(this._state.postureTimer)
+      this._state.postureTimer = null
+    }
+
+    if (this.data.cameraReady && app.globalData.mode === 'http') {
+      if (mode === 'motion') {
+        this.startPolling()
+      } else {
+        this.startPosturePolling()
+      }
+    }
   },
 
   // =================== Camera ===================
@@ -96,7 +132,11 @@ Page({
 
           // HTTP 模式启动轮询
           if (app.globalData.mode === 'http') {
-            that.startPolling()
+            if (that.data.activeMode === 'motion') {
+              that.startPolling()
+            } else {
+              that.startPosturePolling()
+            }
           }
         }, 500)
       },
@@ -147,16 +187,13 @@ Page({
   // =================== Frame Listener ===================
   setupFrameListener() {
     const camera = wx.createCameraContext()
-    // 降帧：不需要每帧都发，控制频率
     let frameCounter = 0
-    const targetInterval = Math.round(app.globalData.pollInterval / 33) // 每 N 帧取一帧
+    const targetInterval = Math.round(app.globalData.pollInterval / 33)
 
     const listener = camera.onCameraFrame((frame) => {
       frameCounter++
-      // 只在轮询间隔内保留最新一帧
       if (frameCounter % targetInterval === 0) {
         this._state.frameQueue.push(frame)
-        // 只保留最新一帧
         if (this._state.frameQueue.length > 1) {
           this._state.frameQueue.shift()
         }
@@ -172,7 +209,7 @@ Page({
     this._state.listener = listener
   },
 
-  // =================== HTTP Polling (云托管模式) ===================
+  // =================== HTTP Polling (motion mode) ===================
   startPolling() {
     const interval = app.globalData.pollInterval
     this._state.pollTimer = setInterval(() => {
@@ -185,7 +222,6 @@ Page({
 
   async sendFrameHTTP(frame) {
     try {
-      // 将 RGBA 帧转为 JPEG 以减小传输体积
       const arrayBuffer = frame.data
       const base64 = wx.arrayBufferToBase64(arrayBuffer)
 
@@ -199,7 +235,6 @@ Page({
       let result
 
       if (this._state.useCloudContainer) {
-        // 云托管调用
         result = await new Promise((resolve, reject) => {
           wx.cloud.callContainer({
             config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },
@@ -212,7 +247,6 @@ Page({
           })
         })
       } else {
-        // 直接 HTTP 调用
         const res = await new Promise((resolve, reject) => {
           wx.request({
             url: app.globalData.apiBase + '/api/pose',
@@ -230,9 +264,91 @@ Page({
         this.onPoseResult(result)
       }
     } catch (e) {
-      // 静默失败，不刷屏
       console.warn('HTTP pose request error:', e.message || e)
     }
+  },
+
+  // =================== Posture Polling (posture mode) ===================
+  startPosturePolling() {
+    // 体态评估不需要高频，1.5秒一次即可
+    this._state.postureTimer = setInterval(() => {
+      if (this._state.frameQueue.length === 0) return
+      const frame = this._state.frameQueue.shift()
+      this.sendFramePosture(frame)
+    }, 1500)
+  },
+
+  async sendFramePosture(frame) {
+    try {
+      const arrayBuffer = frame.data
+      const base64 = wx.arrayBufferToBase64(arrayBuffer)
+
+      const payload = {
+        data: base64,
+        width: frame.width,
+        height: frame.height,
+        format: 'rgba'
+      }
+
+      let result
+
+      if (this._state.useCloudContainer) {
+        result = await new Promise((resolve, reject) => {
+          wx.cloud.callContainer({
+            config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },
+            path: '/api/posture',
+            method: 'POST',
+            data: payload,
+            header: { 'X-WX-SERVICE': 'motion-monitor' },
+            success(res) { resolve(res.data) },
+            fail(err) { reject(err) }
+          })
+        })
+      } else {
+        const res = await new Promise((resolve, reject) => {
+          wx.request({
+            url: app.globalData.apiBase + '/api/posture',
+            method: 'POST',
+            data: payload,
+            header: { 'content-type': 'application/json' },
+            success(res) { resolve(res.data) },
+            fail(err) { reject(err) }
+          })
+        })
+        result = res
+      }
+
+      if (result && result.landmarks) {
+        this.onPoseResult(result)
+      }
+      if (result && result.posture && !result.posture.error) {
+        this.onPostureResult(result.posture)
+      }
+    } catch (e) {
+      console.warn('Posture request error:', e.message || e)
+    }
+  },
+
+  // =================== Posture Result ===================
+  onPostureResult(posture) {
+    const details = Object.keys(posture.details).map(key => {
+      const d = posture.details[key]
+      return {
+        key,
+        label: d.label,
+        desc: d.desc,
+        status: d.status,
+        value: d.angle !== undefined ? d.angle + '°' : d.diff !== undefined ? d.diff + '%' : d.offset !== undefined ? d.offset + '%' : '',
+      }
+    })
+
+    this.setData({
+      postureScore: posture.overall_score,
+      postureStatus: posture.overall_status,
+      postureEmoji: posture.overall_emoji,
+      postureDetails: details,
+      posture: posture,
+    })
   },
 
   // =================== WebSocket (直连模式) ===================
