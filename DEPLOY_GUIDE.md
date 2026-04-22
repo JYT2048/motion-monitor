@@ -159,7 +159,7 @@ App({
 
 ```js
 wx.cloud.callContainer({
-  config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },  // 自动匹配环境
+  config: { env: app.globalData.cloudEnvId },  // 使用显式环境 ID
   path: '/api/pose',                                // API 路径
   method: 'POST',
   header: { 'X-WX-SERVICE': 'motion-monitor' },    // ← 必须和云托管服务名一致

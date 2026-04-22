@@ -437,7 +437,7 @@ Page({
         // Step 3a: 云托管模式
         result = await new Promise((resolve, reject) => {
           wx.cloud.callContainer({
-            config: { env: wx.cloud.DYNAMIC_CURRENT_ENV },
+            config: { env: app.globalData.cloudEnvId },
             path: apiPath,
             method: 'POST',
             data: payload,

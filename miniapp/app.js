@@ -7,5 +7,7 @@ App({
     mode: 'http',
     // 轮询间隔（毫秒），越小越流畅但越耗流量
     pollInterval: 200,
+    // 云托管环境 ID（从微信云托管控制台获取）
+    cloudEnvId: 'prod-d9ghp6oco3b5879a4',
   }
 })
