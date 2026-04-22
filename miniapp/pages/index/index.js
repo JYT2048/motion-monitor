@@ -241,7 +241,7 @@ Page({
             path: '/api/pose',
             method: 'POST',
             data: payload,
-            header: { 'X-WX-SERVICE': 'motion-monitor' },
+            header: { 'X-WX-SERVICE': 'motion-monitor1' },
             success(res) { resolve(res.data) },
             fail(err) { reject(err) }
           })
@@ -299,7 +299,7 @@ Page({
             path: '/api/posture',
             method: 'POST',
             data: payload,
-            header: { 'X-WX-SERVICE': 'motion-monitor' },
+            header: { 'X-WX-SERVICE': 'motion-monitor1' },
             success(res) { resolve(res.data) },
             fail(err) { reject(err) }
           })
