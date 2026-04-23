@@ -41,14 +41,14 @@ def init_pose():
     start = time.time()
     pose = mp_pose.Pose(
         static_image_mode=False,
-        model_complexity=0,       # 0=轻量（最快），1=中等，2=重
+        model_complexity=1,       # 0=轻量，1=中等（准确率优先），2=重
         smooth_landmarks=True,
         enable_segmentation=False,
-        min_detection_confidence=0.5,
+        min_detection_confidence=0.6,   # 略高阈值减少误检
         min_tracking_confidence=0.5,
     )
     elapsed = time.time() - start
-    logger.info(f"MediaPipe Pose model loaded in {elapsed:.2f}s (complexity=0)")
+    logger.info(f"MediaPipe Pose model loaded in {elapsed:.2f}s (complexity=1)")
 
 
 def cleanup_pose():
