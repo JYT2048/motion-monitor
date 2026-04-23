@@ -254,11 +254,17 @@ Page({
       method: 'GET',
       header: { 'X-WX-SERVICE': serviceName },
       success: (res) => {
-        console.log('[Cloud] Health OK:', res.statusCode, res.data)
-        this._state.cloudReady = true
-        this.setData({ debugInfo: '✅ 云托管连通! 开始动作捕捉...' })
-        // 连通后才开轮询
-        this.startPolling()
+        console.log('[Cloud] Health response:', res.statusCode, res.data)
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          this._state.cloudReady = true
+          this.setData({ debugInfo: '✅ 云托管连通! 开始动作捕捉...' })
+          // 连通后才开轮询
+          this.startPolling()
+        } else {
+          this._state.cloudReady = false
+          this.setData({ debugInfo: '❌ 云托管响应异常: HTTP ' + res.statusCode + ' ' + JSON.stringify(res.data).substring(0, 80) })
+          setTimeout(() => this.testCloudConnection(), 5000)
+        }
       },
       fail: (err) => {
         console.error('[Cloud] Health fail:', err.errMsg || '')
