@@ -96,10 +96,11 @@ Page({
   },
 
   onLoad() {
-    // 云初始化已在 app.js onLaunch 中完成
-    if (wx.cloud) {
-      this._state.useCloudContainer = true
-      console.log('[Init] Cloud container mode enabled')
+    const apiBase = app.globalData.apiBase
+    if (apiBase) {
+      console.log('[Init] API mode, apiBase=' + apiBase)
+    } else {
+      console.warn('[Init] No apiBase configured!')
     }
   },
 
@@ -150,13 +151,13 @@ Page({
           const rc = that._state.requestCount
           const ec = that._state.errorCount
           that.setData({
-            debugInfo: '帧=' + fc + ' 请求=' + rc + ' 错误=' + ec + ' 云托管=' + that._state.useCloudContainer + ' 连通=' + that._state.cloudReady
+            debugInfo: '帧=' + fc + ' 请求=' + rc + ' 错误=' + ec + ' 连通=' + that._state.cloudReady
           })
         }
       }, 3000)
 
-      // 先测云托管连通性，连通后再开轮询
-      that.testCloudConnection()
+      // 测试后端连通性
+      that.testConnection()
     }, 1500)
   },
 
@@ -237,41 +238,36 @@ Page({
     }
   },
 
-  // =================== Cloud Connection Test ===================
-  testCloudConnection() {
-    if (!this._state.useCloudContainer) {
-      this.setData({ debugInfo: '⚠️ 云托管不可用，请配置 apiBase' })
+  // =================== Connection Test ===================
+  testConnection() {
+    const apiBase = app.globalData.apiBase
+    if (!apiBase) {
+      this.setData({ debugInfo: '⚠️ 未配置 apiBase，请在 app.js 中设置云托管公网域名' })
       return
     }
 
-    const envId = app.globalData.cloudEnvId
-    const serviceName = 'motion-monitor-002'
-    this.setData({ debugInfo: '🔍 测试云托管... (env=' + envId + ', svc=' + serviceName + ')' })
+    this.setData({ debugInfo: '🔍 测试后端连通... (' + apiBase + ')' })
 
-    wx.cloud.callContainer({
-      config: { env: envId },
-      path: '/health',
+    wx.request({
+      url: apiBase + '/health',
       method: 'GET',
-      header: { 'X-WX-SERVICE': serviceName },
       success: (res) => {
-        console.log('[Cloud] Health response:', res.statusCode, res.data)
+        console.log('[Health] response:', res.statusCode, res.data)
         if (res.statusCode >= 200 && res.statusCode < 300) {
           this._state.cloudReady = true
-          this.setData({ debugInfo: '✅ 云托管连通! 开始动作捕捉...' })
-          // 连通后才开轮询
+          this.setData({ debugInfo: '✅ 后端连通! pose_loaded=' + (res.data.pose_loaded || false) + ' 开始动作捕捉...' })
           this.startPolling()
         } else {
           this._state.cloudReady = false
-          this.setData({ debugInfo: '❌ 云托管响应异常: HTTP ' + res.statusCode + ' ' + JSON.stringify(res.data).substring(0, 80) })
-          setTimeout(() => this.testCloudConnection(), 5000)
+          this.setData({ debugInfo: '❌ 后端响应异常: HTTP ' + res.statusCode })
+          setTimeout(() => this.testConnection(), 5000)
         }
       },
       fail: (err) => {
-        console.error('[Cloud] Health fail:', err.errMsg || '')
+        console.error('[Health] fail:', err.errMsg || '')
         this._state.cloudReady = false
-        this.setData({ debugInfo: '❌ 云托管不通: ' + (err.errMsg || '').substring(0, 100) })
-        // 5 秒后重试
-        setTimeout(() => this.testCloudConnection(), 5000)
+        this.setData({ debugInfo: '❌ 后端不通: ' + (err.errMsg || '').substring(0, 100) })
+        setTimeout(() => this.testConnection(), 5000)
       }
     })
   },
@@ -306,42 +302,25 @@ Page({
       this._state.requestCount++
       const reqId = this._state.requestCount
 
-      let result
-
-      if (this._state.useCloudContainer) {
-        result = await new Promise((resolve, reject) => {
-          wx.cloud.callContainer({
-            config: { env: app.globalData.cloudEnvId },
-            path: '/api/pose',
-            method: 'POST',
-            data: payload,
-            header: {
-              'X-WX-SERVICE': 'motion-monitor-002',
-              'content-type': 'application/json'
-            },
-            success(res) { resolve(res.data) },
-            fail(err) { reject(err) }
-          })
-        })
-      } else {
-        const apiBase = app.globalData.apiBase
-        if (!apiBase) {
-          this.setData({ debugInfo: '⚠️ 无服务地址，请配置 apiBase 或云托管' })
-          this._state.processing = false
-          return
-        }
-        const res = await new Promise((resolve, reject) => {
-          wx.request({
-            url: apiBase + '/api/pose',
-            method: 'POST',
-            data: payload,
-            header: { 'content-type': 'application/json' },
-            success(res) { resolve(res.data) },
-            fail(err) { reject(err) }
-          })
-        })
-        result = res
+      const apiBase = app.globalData.apiBase
+      if (!apiBase) {
+        this.setData({ debugInfo: '⚠️ 无服务地址，请在 app.js 配置 apiBase' })
+        this._state.processing = false
+        return
       }
+
+      const res = await new Promise((resolve, reject) => {
+        wx.request({
+          url: apiBase + '/api/pose',
+          method: 'POST',
+          data: payload,
+          header: { 'content-type': 'application/json' },
+          success(res) { resolve(res) },
+          fail(err) { reject(err) }
+        })
+      })
+
+      const result = res.data
 
       // 处理结果
       if (result && result.landmarks) {
