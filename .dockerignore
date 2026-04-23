@@ -1,13 +1,6 @@
 # 小程序端代码 - 不需要打包进后端容器
 miniapp/
 
-# Web 前端 - 不需要
-index.html
-
-# 文档 - 不需要
-*.md
-!README.md
-
 # Git
 .git/
 .gitignore

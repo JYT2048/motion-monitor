@@ -39,6 +39,12 @@ const COLORS = {
   labelText: '#e2e8f0',
 }
 
+// 帧缩放目标尺寸（越小越快，但精度降低）
+const FRAME_TARGET_WIDTH = 320
+const FRAME_TARGET_HEIGHT = 240
+// JPEG 压缩质量 (0-100)
+const JPEG_QUALITY = 60
+
 function getConnectionSide(i, j) {
   const left = [11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
   const right = [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
@@ -87,12 +93,14 @@ Page({
     pollTimer: null,
     statusTimer: null,
     latestFrame: null,
-    useCloudContainer: false,
     frameCount: 0,
     requestCount: 0,
     errorCount: 0,
     prevLandmarks: null,
-    cloudReady: false, // 云托管连通标记
+    cloudReady: false,
+    // 帧缩放用离屏 canvas
+    offscreenCanvas: null,
+    offscreenCtx: null,
   },
 
   onLoad() {
@@ -142,6 +150,7 @@ Page({
     setTimeout(() => {
       that.setupFrameListener()
       that.setupCanvas()
+      that.setupOffscreenCanvas()
       that.startSession()
 
       // 定时状态汇报
@@ -202,6 +211,19 @@ Page({
         this._state.ctx = ctx
         console.log('[Canvas] Setup done:', canvas.width, 'x', canvas.height, 'dpr=' + dpr)
       })
+  },
+
+  // 离屏 canvas 用于帧缩放和 JPEG 编码
+  setupOffscreenCanvas() {
+    const canvas = wx.createOffscreenCanvas({
+      type: '2d',
+      width: FRAME_TARGET_WIDTH,
+      height: FRAME_TARGET_HEIGHT,
+    })
+    const ctx = canvas.getContext('2d')
+    this._state.offscreenCanvas = canvas
+    this._state.offscreenCtx = ctx
+    console.log('[OffscreenCanvas] Setup done:', FRAME_TARGET_WIDTH, 'x', FRAME_TARGET_HEIGHT)
   },
 
   // =================== Frame Listener ===================
@@ -274,14 +296,15 @@ Page({
 
   // =================== HTTP Polling ===================
   startPolling() {
-    if (this._state.pollTimer) return // 防止重复
-    console.log('[Poll] Started, interval=500ms')
+    if (this._state.pollTimer) return
+    const interval = app.globalData.pollInterval || 300
+    console.log('[Poll] Started, interval=' + interval + 'ms')
     this._state.pollTimer = setInterval(() => {
       if (!this._state.latestFrame || this._state.processing) return
       const frame = this._state.latestFrame
       this._state.processing = true
       this.sendFrameHTTP(frame)
-    }, 500)
+    }, interval)
   },
 
   async sendFrameHTTP(frame) {
@@ -291,24 +314,68 @@ Page({
         return
       }
 
-      const base64 = wx.arrayBufferToBase64(frame.data)
-      const payload = {
-        data: base64,
-        width: frame.width,
-        height: frame.height,
-        format: 'rgba'
-      }
+      // 用离屏 canvas 缩放帧 + JPEG 压缩
+      const jpegBase64 = this.compressFrame(frame)
 
-      this._state.requestCount++
-      const reqId = this._state.requestCount
-
-      const apiBase = app.globalData.apiBase
-      if (!apiBase) {
-        this.setData({ debugInfo: '⚠️ 无服务地址，请在 app.js 配置 apiBase' })
-        this._state.processing = false
+      if (!jpegBase64) {
+        // 压缩失败，降级发送原始 RGBA 数据
+        const base64 = wx.arrayBufferToBase64(frame.data)
+        this._sendRequest({ data: base64, width: frame.width, height: frame.height, format: 'rgba' })
         return
       }
 
+      this._sendRequest({ image: jpegBase64, format: 'jpeg' })
+
+    } catch (e) {
+      this._state.errorCount++
+      const errMsg = e.errMsg || e.message || String(e)
+      console.error('[Request] Error:', errMsg)
+      this.setData({ debugInfo: '❌ 请求失败: ' + errMsg.substring(0, 80) })
+      this._state.processing = false
+    }
+  },
+
+  // 帧缩放 + JPEG 压缩
+  compressFrame(frame) {
+    const oc = this._state.offscreenCanvas
+    const octx = this._state.offscreenCtx
+    if (!oc || !octx) return null
+
+    try {
+      const imgData = octx.createImageData(frame.width, frame.height)
+      const src = new Uint8Array(frame.data)
+      const dst = imgData.data
+      // RGBA 帧数据直接拷贝
+      dst.set(src)
+      octx.putImageData(imgData, 0, 0)
+
+      // 缩放绘制
+      octx.drawImage(oc, 0, 0, frame.width, frame.height, 0, 0, FRAME_TARGET_WIDTH, FRAME_TARGET_HEIGHT)
+
+      // 导出 JPEG
+      const jpegData = oc.toDataURL('image/jpeg', JPEG_QUALITY / 100)
+      if (!jpegData || !jpegData.startsWith('data:image/jpeg;base64,')) return null
+
+      // 去掉 data URI 前缀
+      return jpegData.substring('data:image/jpeg;base64,'.length)
+    } catch (e) {
+      console.warn('[Compress] Frame compression failed:', e.message)
+      return null
+    }
+  },
+
+  async _sendRequest(payload) {
+    this._state.requestCount++
+    const reqId = this._state.requestCount
+
+    const apiBase = app.globalData.apiBase
+    if (!apiBase) {
+      this.setData({ debugInfo: '⚠️ 无服务地址，请在 app.js 配置 apiBase' })
+      this._state.processing = false
+      return
+    }
+
+    try {
       const res = await new Promise((resolve, reject) => {
         wx.request({
           url: apiBase + '/api/pose',
@@ -322,7 +389,6 @@ Page({
 
       const result = res.data
 
-      // 处理结果
       if (result && result.landmarks) {
         this.onPoseResult(result)
       } else if (result && result.error) {
@@ -332,7 +398,6 @@ Page({
       } else {
         this.clearSkeleton()
       }
-
     } catch (e) {
       this._state.errorCount++
       const errMsg = e.errMsg || e.message || String(e)
