@@ -245,7 +245,7 @@ Page({
     }
 
     const envId = app.globalData.cloudEnvId
-    const serviceName = 'motion-monitor1'
+    const serviceName = 'motion-monitor-002'
     this.setData({ debugInfo: '🔍 测试云托管... (env=' + envId + ', svc=' + serviceName + ')' })
 
     wx.cloud.callContainer({
@@ -310,7 +310,7 @@ Page({
             method: 'POST',
             data: payload,
             header: {
-              'X-WX-SERVICE': 'motion-monitor1',
+              'X-WX-SERVICE': 'motion-monitor-002',
               'content-type': 'application/json'
             },
             success(res) { resolve(res.data) },
