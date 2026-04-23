@@ -96,14 +96,10 @@ Page({
   },
 
   onLoad() {
+    // 云初始化已在 app.js onLaunch 中完成
     if (wx.cloud) {
-      try {
-        wx.cloud.init({ traceUser: true })
-        this._state.useCloudContainer = true
-        console.log('[Init] Cloud container mode enabled')
-      } catch (e) {
-        console.log('[Init] Cloud not available:', e.message)
-      }
+      this._state.useCloudContainer = true
+      console.log('[Init] Cloud container mode enabled')
     }
   },
 
